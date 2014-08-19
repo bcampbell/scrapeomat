@@ -22,7 +22,7 @@ func main() {
 	var scrapersConfigFlag = flag.String("s", "scrapers.cfg", "config file for scrapers")
 	var archiveDirFlag = flag.String("a", "archive", "archive dir to dump .warc files into")
 	var databaseURLFlag = flag.String("database", "localhost/scrapeomat", "mongodb database url")
-	var portFlag = flag.Int("port", 5678, "port to run SSE server")
+	var portFlag = flag.Int("port", 0, "port to run SSE server (0=no server)")
 	flag.Parse()
 
 	// scraper configuration
@@ -100,16 +100,12 @@ func main() {
 	defer db.Close()
 
 	// set up sse server
-	sseSrv := eventsource.NewServer()
-	sseSrv.Register("all", db)
-	http.Handle("/all/", sseSrv.Handler("all"))
-
-	//
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", *portFlag))
-	if err != nil {
-		panic(err)
+	var sseSrv *eventsource.Server
+	if *portFlag > 0 {
+		sseSrv = eventsource.NewServer()
+		sseSrv.Register("all", db)
+		http.Handle("/all/", sseSrv.Handler("all"))
 	}
-	defer l.Close()
 
 	// Run all the scrapers as goroutines
 	var wg sync.WaitGroup
@@ -126,8 +122,15 @@ func main() {
 		}()
 	}
 
-	// run the webserver
-	http.Serve(l, nil)
-
+	// run the sse webserver
+	if sseSrv != nil {
+		//
+		l, err := net.Listen("tcp", fmt.Sprintf(":%d", *portFlag))
+		if err != nil {
+			panic(err)
+		}
+		defer l.Close()
+		http.Serve(l, nil)
+	}
 	wg.Wait()
 }
