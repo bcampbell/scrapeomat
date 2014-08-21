@@ -8,7 +8,7 @@ import (
 )
 
 var paywallLogins = map[string]func(*http.Client) error{
-	"telegraph.co.uk":      loginTelegraph,
+	//	"telegraph.co.uk":      loginTelegraph,
 	"thesun.co.uk":         loginSun,
 	"thetimes.co.uk":       loginTimes,
 	"thesundaytimes.co.uk": loginSundayTimes,
