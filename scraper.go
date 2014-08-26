@@ -25,6 +25,7 @@ type ScrapeStats struct {
 
 type Scraper struct {
 	Name       string
+	Conf       *ScraperConf
 	discoverer *discover.Discoverer
 	errorLog   *log.Logger
 	infoLog    *log.Logger
@@ -35,11 +36,11 @@ type Scraper struct {
 
 type ScraperConf struct {
 	discover.DiscovererDef
-	Foo string
+	Cookies bool
 }
 
 func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string) (*Scraper, error) {
-	scraper := Scraper{Name: name, archiveDir: archiveDir, runPeriod: 6 * time.Hour}
+	scraper := Scraper{Name: name, Conf: conf, archiveDir: archiveDir, runPeriod: 6 * time.Hour}
 
 	scraper.errorLog = log.New(os.Stderr, "ERR "+name+": ", log.LstdFlags)
 	if verbosity > 0 {

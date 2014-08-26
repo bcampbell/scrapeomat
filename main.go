@@ -57,19 +57,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	politeClient := &http.Client{
 		Transport: util.NewPoliteTripper(),
-		// handy to dump out redirects for debugging
-		/*
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				fmt.Printf("checkredirect: %s %s\n", req.Method, req.URL)
-				if len(via) >= 10 {
-					return fmt.Errorf("stopped after 10 redirects")
-				}
-				return nil
-			},
-		*/
-		Jar: jar,
+	}
+
+	politeClientWithCookies := &http.Client{
+		Transport: util.NewPoliteTripper(),
+		Jar:       jar,
 	}
 
 	// which sites?
@@ -88,7 +83,13 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Unknown site '%s'\n", siteName)
 				continue
 			}
-			foundArts, _ := scraper.Discover(politeClient)
+			var client *http.Client
+			if scraper.Conf.Cookies {
+				client = politeClientWithCookies
+			} else {
+				client = politeClient
+			}
+			foundArts, _ := scraper.Discover(client)
 			for _, a := range foundArts {
 				fmt.Println(a)
 			}
@@ -118,7 +119,15 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			scraper.Start(db, politeClient, sseSrv)
+			var client *http.Client
+			if scraper.Conf.Cookies {
+				scraper.infoLog.Printf("using cookies")
+				client = politeClientWithCookies
+			} else {
+				scraper.infoLog.Printf("not using cookies")
+				client = politeClient
+			}
+			scraper.Start(db, client, sseSrv)
 		}()
 	}
 
