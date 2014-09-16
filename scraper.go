@@ -174,7 +174,20 @@ func (scraper *Scraper) DoRun(db store.Store, c *http.Client, sseSrv *eventsourc
 func (scraper *Scraper) ScrapeArt(c *http.Client, artURL string) (*arts.Article, error) {
 	// FETCH
 	fetchTime := time.Now()
-	resp, err := c.Get(artURL)
+	req, err := http.NewRequest("GET", artURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	// NOTE: FT.com always returns 403 if no Accept header is present.
+	// Seems like a reasonable thing to send anyway...
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+
+	// other possible headers we might want to fiddle with:
+	//req.Header.Set("User-Agent", `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0`)
+	//req.Header.Set("Referrer", "http://...")
+	//req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+
+	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err
 	}

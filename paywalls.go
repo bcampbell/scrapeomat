@@ -3,8 +3,11 @@ package main
 import (
 	"code.google.com/p/gcfg"
 	"fmt"
+	//	"io/ioutil"
 	"net/http"
 	"net/url"
+	//	"os"
+	"strings"
 )
 
 var paywallLogins = map[string]func(*http.Client) error{
@@ -12,7 +15,7 @@ var paywallLogins = map[string]func(*http.Client) error{
 	"thesun.co.uk":         loginSun,
 	"thetimes.co.uk":       loginTimes,
 	"thesundaytimes.co.uk": loginSundayTimes,
-	//"ft.com":               loginFT,
+	"ft.com":               loginFT,
 }
 
 func loginTelegraph(c *http.Client) error {
@@ -167,22 +170,63 @@ func loginFT(c *http.Client) error {
 
 	details := &conf.FT
 
+	// prime the pump
+	/*
+	       fmt.Printf("priming...\n")
+	   	foo, err := c.Get("http://www.ft.com")
+	   	if err != nil {
+	   		return err
+	   	}
+	   	raw, _ := ioutil.ReadAll(foo.Body)
+	   	defer foo.Body.Close()
+	*/
+
+	//	fmt.Printf("login...\n")
 	loginURL := "https://registration.ft.com/registration/barrier/login"
 
 	postData := url.Values{}
 	postData.Set("username", details.Username)
 	postData.Set("password", details.Password)
-	//	postData.Set("rememberme", "on")
-	resp, err := c.PostForm(loginURL, postData)
+
+	postData.Set("location", "http://www.ft.com/home/uk")
+	postData.Set("rememberme", "on")
+
+	//	fmt.Println(postData)
+
+	//  User-Agent:
+	//    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0"
+	req, err := http.NewRequest("POST", loginURL, strings.NewReader(postData.Encode()))
+	// ...
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	//	req.Header.Set("User-Agent", `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0`)
+
+	//	req.Header.Set("Referrer", "http://www.ft.com/home/uk")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	//req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	//	fmt.Printf("%v\n", req)
+
+	//	fmt.Println("=====================")
+	//	req.Write(os.Stdout)
+	//	fmt.Println("=====================")
+
+	resp, err := c.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	/*
+		_, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+	*/
 
-	//fmt.Printf("Ended up at: %s %s %d\n", resp.Request.Method, resp.Request.URL, resp.StatusCode)
+	//	fmt.Printf("Ended up at: %s %s %d\n", resp.Request.Method, resp.Request.URL, resp.StatusCode)
 
 	// upon success, redirects us on to "http://www.ft.com/home/uk"
 	// upon failure, returns a 200, but leaves us on registration.ft.com
+	// also seeing 403....
 
 	switch resp.Request.URL.Host {
 	case "www.ft.com":
