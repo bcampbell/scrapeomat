@@ -35,7 +35,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <outfile>\n", os.Args[0])
 		flag.PrintDefaults()
 	}
-	var databaseURL = flag.String("database", "localhost/eurobot", "mongodb database url")
+	var databaseURL = flag.String("database", "", "mongodb database url (eg localhost/scrapeomat)")
 	flag.Parse()
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Missing output filename\n")
