@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"semprini/scrapeomat/arc"
+	"semprini/scrapeomat/paywall"
 	"semprini/scrapeomat/store"
 	"time"
 )
@@ -67,7 +68,8 @@ func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
 	disc := scraper.discoverer
 
 	// if it's a paywalled site, log in first
-	if login, got := paywallLogins[scraper.Name]; got {
+	login := paywall.GetLogin(scraper.Name)
+	if login != nil {
 		scraper.infoLog.Printf("Logging in\n")
 		err := login(c)
 		if err != nil {

@@ -1,4 +1,7 @@
-package main
+package paywall
+
+// Handle all the nasty special-case code needed to log into various
+// paywalls.
 
 import (
 	"code.google.com/p/gcfg"
@@ -10,15 +13,23 @@ import (
 	"strings"
 )
 
-var paywallLogins = map[string]func(*http.Client) error{
-	//	"telegraph.co.uk":      loginTelegraph,
-	"thesun.co.uk":         loginSun,
-	"thetimes.co.uk":       loginTimes,
-	"thesundaytimes.co.uk": loginSundayTimes,
-	"ft.com":               loginFT,
+type LoginFunc func(*http.Client) error
+
+func GetLogin(site string) LoginFunc {
+	// TODO: handle www.prefix?
+	return paywallLogins[site]
 }
 
-func loginTelegraph(c *http.Client) error {
+var paywallLogins = map[string]LoginFunc{
+	//	"telegraph.co.uk":      LoginTelegraph,
+	"thesun.co.uk":         LoginSun,
+	"thescottishsun.co.uk": LoginSun, // Sun login works here too
+	"thetimes.co.uk":       LoginTimes,
+	"thesundaytimes.co.uk": LoginSundayTimes,
+	"ft.com":               LoginFT,
+}
+
+func LoginTelegraph(c *http.Client) error {
 	conf := struct {
 		Telegraph struct {
 			Email    string
@@ -59,7 +70,7 @@ func loginTelegraph(c *http.Client) error {
 	return nil
 }
 
-func loginSun(c *http.Client) error {
+func LoginSun(c *http.Client) error {
 
 	conf := struct {
 		TheSun struct {
@@ -77,10 +88,10 @@ func loginSun(c *http.Client) error {
 	loginURL := "https://login.thesun.co.uk/"
 	successHost := "www.thesun.co.uk"
 	failureHost := "login.thesun.co.uk"
-	return loginNI(c, loginURL, successHost, failureHost, details.Username, details.Password)
+	return LoginNI(c, loginURL, successHost, failureHost, details.Username, details.Password)
 }
 
-func loginTimes(c *http.Client) error {
+func LoginTimes(c *http.Client) error {
 	conf := struct {
 		TheTimes struct {
 			Username string
@@ -97,10 +108,10 @@ func loginTimes(c *http.Client) error {
 	loginURL := "https://login.thetimes.co.uk/"
 	successHost := "www.thetimes.co.uk"
 	failureHost := "login.thetimes.co.uk"
-	return loginNI(c, loginURL, successHost, failureHost, details.Username, details.Password)
+	return LoginNI(c, loginURL, successHost, failureHost, details.Username, details.Password)
 }
 
-func loginSundayTimes(c *http.Client) error {
+func LoginSundayTimes(c *http.Client) error {
 	conf := struct {
 		TheSundayTimes struct {
 			Username string
@@ -117,11 +128,11 @@ func loginSundayTimes(c *http.Client) error {
 	loginURL := "https://login.thesundaytimes.co.uk/"
 	successHost := "www.thesundaytimes.co.uk"
 	failureHost := "login.thesundaytimes.co.uk"
-	return loginNI(c, loginURL, successHost, failureHost, details.Username, details.Password)
+	return LoginNI(c, loginURL, successHost, failureHost, details.Username, details.Password)
 }
 
 // common login for sun, times and sunday times
-func loginNI(c *http.Client, loginURL, successHost, failureHost, username, password string) error {
+func LoginNI(c *http.Client, loginURL, successHost, failureHost, username, password string) error {
 
 	postData := url.Values{}
 	postData.Set("username", username)
@@ -156,7 +167,7 @@ func loginNI(c *http.Client, loginURL, successHost, failureHost, username, passw
 	}
 }
 
-func loginFT(c *http.Client) error {
+func LoginFT(c *http.Client) error {
 	conf := struct {
 		FT struct {
 			Username string
