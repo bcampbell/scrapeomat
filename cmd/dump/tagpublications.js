@@ -57,6 +57,7 @@ augment = {
 	"www.thesundaytimes.co.uk": {sn: 'sundaytimes', tag:'nat'},
 	"www.thetimes.co.uk": {sn: 'times', tag:'nat'},
 	"www.scotsman.com": {sn: 'scotsman', tag:'scot'},
+	"www.edinburghnews.scotsman.com": {sn: 'scotsman', tag:'scot'},
 	"www.dailyrecord.co.uk": {sn: 'dailyrecord', tag:'scot'},
 	"www.heraldscotland.com": {sn: 'herald', tag:'scot'},
 	"www.eveningtimes.co.uk": {sn: 'eveningtimes', tag:'scot'},
