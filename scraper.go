@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"semprini/scrapeomat/arc"
 	"semprini/scrapeomat/paywall"
@@ -64,18 +65,20 @@ func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string
 	return &scraper, nil
 }
 
-func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
-	disc := scraper.discoverer
-
-	// if it's a paywalled site, log in first
+func (scraper *Scraper) Login(c *http.Client) error {
 	login := paywall.GetLogin(scraper.Name)
 	if login != nil {
 		scraper.infoLog.Printf("Logging in\n")
 		err := login(c)
 		if err != nil {
-			return nil, fmt.Errorf("Login failed (%s)\n", err)
+			return fmt.Errorf("Login failed (%s)\n", err)
 		}
 	}
+	return nil
+}
+
+func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
+	disc := scraper.discoverer
 
 	artLinks, err := disc.Run(c)
 	if err != nil {
@@ -119,6 +122,11 @@ func (scraper *Scraper) DoRun(db store.Store, c *http.Client, sseSrv *eventsourc
 		defer scraper.infoLog.Printf("run finished in %s (%d new articles, %d errors)\n", elapsed, stats.StashCount, stats.ErrorCount)
 	}()
 
+	err := scraper.Login(c)
+	if err != nil {
+		return err
+	}
+
 	foundArts, err := scraper.Discover(c)
 	if err != nil {
 		return fmt.Errorf("discovery failed: %s", err)
@@ -133,6 +141,59 @@ func (scraper *Scraper) DoRun(db store.Store, c *http.Client, sseSrv *eventsourc
 	scraper.infoLog.Printf("found %d articles, %d new (%d pages fetched, %d errors)\n",
 		len(foundArts), len(newArts), stats.FetchCount, stats.ErrorCount)
 
+	return scraper.FetchAndStash(newArts, db, c, sseSrv)
+}
+
+// perform a single scraper run, using a list of article URLS instead of invoking the discovery
+func (scraper *Scraper) DoRunFromList(arts []string, db store.Store, c *http.Client, sseSrv *eventsource.Server) error {
+
+	scraper.infoLog.Printf("start run from list\n")
+	// reset the stats
+	scraper.stats = ScrapeStats{}
+	scraper.stats.Start = time.Now()
+	defer func() {
+		stats := &scraper.stats
+		stats.End = time.Now()
+		elapsed := stats.End.Sub(stats.Start)
+		defer scraper.infoLog.Printf("finished in %s (%d new articles, %d errors)\n", elapsed, stats.StashCount, stats.ErrorCount)
+	}()
+
+	// process/reject urls using site rules
+	cookedArts := []string{}
+	rejectCnt := 0
+	for _, artURL := range arts {
+		baseURL, err := url.Parse(artURL)
+		if err != nil {
+			scraper.errorLog.Printf("%s\n", err)
+			rejectCnt++
+			continue
+		}
+		cooked, err := scraper.discoverer.CookArticleURL(baseURL, artURL)
+		if err != nil {
+			scraper.infoLog.Printf("Reject %s (%s)\n", artURL, err)
+			rejectCnt++
+			continue
+		}
+		cookedArts = append(cookedArts, cooked.String())
+	}
+
+	newArts, err := db.WhichAreNew(cookedArts)
+	if err != nil {
+		return fmt.Errorf("WhichAreNew() failed: %s", err)
+	}
+
+	scraper.infoLog.Printf("%d new articles, %d rejected\n",
+		len(newArts), rejectCnt)
+
+	err = scraper.Login(c)
+	if err != nil {
+		return err
+	}
+
+	return scraper.FetchAndStash(newArts, db, c, sseSrv)
+}
+
+func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.Client, sseSrv *eventsource.Server) error {
 	scraper.infoLog.Printf("Start scraping\n")
 
 	// fetch and extract 'em
