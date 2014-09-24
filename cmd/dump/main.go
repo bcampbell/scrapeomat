@@ -51,6 +51,7 @@ var augment = map[string]struct{ sn, tag string }{
 	"www.dailymail.co.uk":            {"dailymail", "nat"},
 	"www.thisismoney.co.uk":          {"dailymail", "nat"},
 	"www.ft.com":                     {"ft", "nat"},
+	"blogs.ft.com":                   {"ft", "nat"},
 	"www.leftfootforward.org":        {"leftfootforward", "blog"},
 	"www.iaindale.com":               {"iaindale", "blog"},
 	"www.independent.co.uk":          {"independent", "nat"},
