@@ -6,8 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/bcampbell/arts/util"
-	"github.com/donovanhide/eventsource"
-	"net"
+	//	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -22,9 +21,8 @@ func main() {
 	var verbosityFlag = flag.Int("v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
 	var scrapersConfigFlag = flag.String("s", "scrapers.cfg", "config file for scrapers")
 	var archiveDirFlag = flag.String("a", "archive", "archive dir to dump .warc files into")
-	var inputListFlag = flag.String("i", "input", "input file of URLs (runs scrapers then exit)")
-	var databaseURLFlag = flag.String("database", "localhost/scrapeomat", "mongodb database url")
-	var portFlag = flag.Int("port", 0, "port to run SSE server (0=no server)")
+	var inputListFlag = flag.String("i", "", "input file of URLs (runs scrapers then exit)")
+	var databaseURLFlag = flag.String("database", "postgres://scrapeomat:password@localhost/scrapeomat", "database connection string")
 	flag.Parse()
 
 	// scraper configuration
@@ -104,7 +102,11 @@ func main() {
 		return
 	}
 
-	db := store.NewMongoStore(*databaseURLFlag)
+	db, err := store.NewPgStore(*databaseURLFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
+		os.Exit(1)
+	}
 	defer db.Close()
 
 	// running with input file?
@@ -116,7 +118,7 @@ func main() {
 
 		inFile, err := os.Open(*inputListFlag)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+			fmt.Fprintf(os.Stderr, "ERROR opening input list: %s\n", err)
 			os.Exit(1)
 		}
 		scanner := bufio.NewScanner(inFile)
@@ -150,17 +152,9 @@ func main() {
 				scraper.infoLog.Printf("not using cookies")
 				client = politeClient
 			}
-			scraper.DoRunFromList(artURLs, db, client, nil)
+			scraper.DoRunFromList(artURLs, db, client)
 		}
 		return
-	}
-
-	// set up sse server
-	var sseSrv *eventsource.Server
-	if *portFlag > 0 {
-		sseSrv = eventsource.NewServer()
-		sseSrv.Register("all", db)
-		http.Handle("/all/", sseSrv.Handler("all"))
 	}
 
 	// Run all the scrapers as goroutines
@@ -182,19 +176,9 @@ func main() {
 				scraper.infoLog.Printf("not using cookies")
 				client = politeClient
 			}
-			scraper.Start(db, client, sseSrv)
+			scraper.Start(db, client)
 		}()
 	}
 
-	// run the sse webserver
-	if sseSrv != nil {
-		//
-		l, err := net.Listen("tcp", fmt.Sprintf(":%d", *portFlag))
-		if err != nil {
-			panic(err)
-		}
-		defer l.Close()
-		http.Serve(l, nil)
-	}
 	wg.Wait()
 }

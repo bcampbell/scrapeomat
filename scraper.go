@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/bcampbell/arts/arts"
 	"github.com/bcampbell/arts/discover"
-	"github.com/donovanhide/eventsource"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -39,6 +38,7 @@ type Scraper struct {
 type ScraperConf struct {
 	discover.DiscovererDef
 	Cookies bool
+	PubCode string
 }
 
 func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string) (*Scraper, error) {
@@ -93,10 +93,10 @@ func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
 }
 
 // start the scraper, running it at regular intervals
-func (scraper *Scraper) Start(db store.Store, c *http.Client, sseSrv *eventsource.Server) {
+func (scraper *Scraper) Start(db store.Store, c *http.Client) {
 	for {
 		lastRun := time.Now()
-		err := scraper.DoRun(db, c, sseSrv)
+		err := scraper.DoRun(db, c)
 		if err != nil {
 			scraper.errorLog.Printf("run aborted: %s", err)
 		}
@@ -109,7 +109,7 @@ func (scraper *Scraper) Start(db store.Store, c *http.Client, sseSrv *eventsourc
 }
 
 // perform a single scraper run
-func (scraper *Scraper) DoRun(db store.Store, c *http.Client, sseSrv *eventsource.Server) error {
+func (scraper *Scraper) DoRun(db store.Store, c *http.Client) error {
 
 	scraper.infoLog.Printf("start run\n")
 	// reset the stats
@@ -141,11 +141,11 @@ func (scraper *Scraper) DoRun(db store.Store, c *http.Client, sseSrv *eventsourc
 	scraper.infoLog.Printf("found %d articles, %d new (%d pages fetched, %d errors)\n",
 		len(foundArts), len(newArts), stats.FetchCount, stats.ErrorCount)
 
-	return scraper.FetchAndStash(newArts, db, c, sseSrv)
+	return scraper.FetchAndStash(newArts, db, c)
 }
 
 // perform a single scraper run, using a list of article URLS instead of invoking the discovery
-func (scraper *Scraper) DoRunFromList(arts []string, db store.Store, c *http.Client, sseSrv *eventsource.Server) error {
+func (scraper *Scraper) DoRunFromList(arts []string, db store.Store, c *http.Client) error {
 
 	scraper.infoLog.Printf("start run from list\n")
 	// reset the stats
@@ -190,10 +190,10 @@ func (scraper *Scraper) DoRunFromList(arts []string, db store.Store, c *http.Cli
 		return err
 	}
 
-	return scraper.FetchAndStash(newArts, db, c, sseSrv)
+	return scraper.FetchAndStash(newArts, db, c)
 }
 
-func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.Client, sseSrv *eventsource.Server) error {
+func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.Client) error {
 	scraper.infoLog.Printf("Start scraping\n")
 
 	// fetch and extract 'em
@@ -207,7 +207,6 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.
 			}
 			continue
 		}
-
 		// TODO: recheck the urls - we might already have it
 
 		// STASH
@@ -222,19 +221,11 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.
 		}
 		scraper.stats.StashCount += 1
 		scraper.infoLog.Printf("scraped %s %s -> '%s' (%d chars)\n", id, artURL, art.Headline, len(art.Content))
-
-		// TODO: make the store handle notification instead
-		if sseSrv != nil {
-			// broadcast it to any connected clients
-			ev := store.NewArticleEvent(art, id)
-			sseSrv.Publish([]string{"all"}, ev)
-		}
-
 	}
 	return nil
 }
 
-func (scraper *Scraper) ScrapeArt(c *http.Client, artURL string) (*arts.Article, error) {
+func (scraper *Scraper) ScrapeArt(c *http.Client, artURL string) (*store.Article, error) {
 	// FETCH
 	fetchTime := time.Now()
 	req, err := http.NewRequest("GET", artURL, nil)
@@ -272,10 +263,18 @@ func (scraper *Scraper) ScrapeArt(c *http.Client, artURL string) (*arts.Article,
 		return nil, err
 	}
 
-	art, err := arts.ExtractHTML(rawHTML, artURL)
+	scraped, err := arts.ExtractHTML(rawHTML, artURL)
 	if err != nil {
 		return nil, err
 	}
 
+	art := store.ConvertArticle(scraped)
+
+	if scraper.Conf.PubCode != "" {
+		art.Publication.Code = scraper.Conf.PubCode
+	} else {
+		art.Publication.Code = scraper.Name
+	}
+	// TODO: set publication code here!
 	return art, nil
 }
