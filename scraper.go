@@ -210,7 +210,7 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.
 		// TODO: recheck the urls - we might already have it
 
 		// STASH
-		id, err := db.Stash(art)
+		_, err = db.Stash(art)
 		if err != nil {
 			scraper.errorLog.Printf("stash failure: %s\n", err)
 			scraper.stats.ErrorCount += 1
@@ -220,7 +220,7 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.
 			continue
 		}
 		scraper.stats.StashCount += 1
-		scraper.infoLog.Printf("scraped %s %s -> '%s' (%d chars)\n", id, artURL, art.Headline, len(art.Content))
+		scraper.infoLog.Printf("scraped %s (%d chars)\n", artURL, len(art.Content))
 	}
 	return nil
 }
