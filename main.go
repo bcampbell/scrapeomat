@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"semprini/scrapeomat/server"
 	"semprini/scrapeomat/store"
 	"strings"
 	"sync"
@@ -189,6 +190,10 @@ func main() {
 			scraper.Start(db, client)
 		}()
 	}
+
+	// run server
+	fmt.Printf("Running server: http://localhost:12345/all\n")
+	server.Run(db, 12345)
 
 	wg.Wait()
 }

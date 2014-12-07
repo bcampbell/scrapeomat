@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/lib/pq"
+	"time"
 )
 
 // PgStore stashes articles in a postgresql db
@@ -135,4 +136,43 @@ func (store *PgStore) findOrCreatePublication(tx *sql.Tx, pub *Publication) (int
 		return 0, err
 	}
 	return pubID, nil
+}
+
+func (store *PgStore) Fetch(abort <-chan struct{}) <-chan FetchedArt {
+	c := make(chan FetchedArt)
+	go func() {
+		defer close(c)
+		rows, err := store.db.Query("SELECT id,headline FROM article LIMIT 1000")
+		if err != nil {
+			c <- FetchedArt{nil, err}
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			select {
+			case <-abort:
+				fmt.Printf("aborted.\n")
+				return
+			default:
+			}
+
+			time.Sleep(1000 * time.Millisecond)
+
+			var id int
+			var art Article
+			if err := rows.Scan(&id, &art.Headline); err != nil {
+				c <- FetchedArt{nil, err}
+				return
+			}
+			fmt.Printf("send %d: %s\n", id, art.Headline)
+			c <- FetchedArt{&art, nil}
+
+		}
+		if err := rows.Err(); err != nil {
+			c <- FetchedArt{nil, err}
+			return
+		}
+
+	}()
+	return c
 }

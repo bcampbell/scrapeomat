@@ -5,6 +5,11 @@ import (
 	"fmt"
 )
 
+type FetchedArt struct {
+	Art *Article
+	Err error
+}
+
 type Store interface {
 	WhichAreNew([]string) ([]string, error)
 
@@ -15,6 +20,8 @@ type Store interface {
 	// for the article.
 	Stash(*Article) (string, error)
 	Close()
+
+	Fetch(abort <-chan struct{}) (c <-chan FetchedArt)
 }
 
 // TestStore is a null store which does nothing
@@ -38,4 +45,13 @@ func (store *TestStore) Stash(art *Article) (string, error) {
 	}
 	fmt.Printf("%s \"%s\" [%s]\n", art.Published, art.Headline, art.CanonicalURL)
 	return "", nil
+}
+
+func (store *TestStore) Fetch(abort <-chan struct{}) chan<- FetchedArt {
+
+	c := make(chan FetchedArt)
+	go func() {
+		close(c)
+	}()
+	return c
 }
