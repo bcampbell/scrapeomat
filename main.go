@@ -22,7 +22,7 @@ func main() {
 	var scrapersConfigFlag = flag.String("s", "scrapers.cfg", "config file for scrapers")
 	var archiveDirFlag = flag.String("a", "archive", "archive dir to dump .warc files into")
 	var inputListFlag = flag.String("i", "", "input file of URLs (runs scrapers then exit)")
-	var databaseURLFlag = flag.String("database", "postgres://scrapeomat:password@localhost/scrapeomat", "database connection string")
+	var databaseURLFlag = flag.String("db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
 	flag.Parse()
 
 	// scraper configuration
@@ -102,7 +102,17 @@ func main() {
 		return
 	}
 
-	db, err := store.NewPgStore(*databaseURLFlag)
+	connStr := *databaseURLFlag
+	if connStr == "" {
+		connStr = os.Getenv("SCRAPEOMAT_DB")
+	}
+
+	if connStr == "" {
+		fmt.Fprintf(os.Stderr, "ERROR: no database specified (use -db flag or set $SCRAPEOMAT_DB)\n")
+		os.Exit(1)
+	}
+
+	db, err := store.NewPgStore(connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)
