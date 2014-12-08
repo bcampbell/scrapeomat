@@ -22,11 +22,11 @@ func GetLogin(site string) LoginFunc {
 
 var paywallLogins = map[string]LoginFunc{
 	//	"telegraph.co.uk":      LoginTelegraph,
-	"thesun.co.uk":         LoginSun,
-	"thescottishsun.co.uk": LoginSun, // Sun login works here too
-	"thetimes.co.uk":       LoginTimes,
-	"thesundaytimes.co.uk": LoginSundayTimes,
-	"ft.com":               LoginFT,
+	"thesun":      LoginSun,
+	"scottishsun": LoginSun, // Sun login works here too
+	"thetimes":    LoginTimes,
+	"sundaytimes": LoginSundayTimes,
+	"ft":          LoginFT,
 }
 
 func LoginTelegraph(c *http.Client) error {
