@@ -3,7 +3,8 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
+	"regexp"
 	"time"
 )
 
@@ -44,6 +45,26 @@ func (store *PgStore) Stash(art *Article) (string, error) {
 	return artID, nil
 }
 
+var timeFmts = []string{
+	time.RFC3339,
+	"2006-01-02T15:04:05",
+	"2006-01-02T15:04",
+	"2006-01-02",
+}
+
+func cvtTime(timestamp string) pq.NullTime {
+	for _, layout := range timeFmts {
+		t, err := time.Parse(layout, timestamp)
+		if err == nil {
+			return pq.NullTime{Time: t, Valid: true}
+		}
+	}
+
+	return pq.NullTime{Valid: false}
+}
+
+var datePat = regexp.MustCompile(`^\d\d\d\d-\d\d-\d\d`)
+
 func (store *PgStore) stash2(tx *sql.Tx, art *Article) (string, error) {
 
 	pubID, err := store.findOrCreatePublication(tx, &art.Publication)
@@ -56,8 +77,8 @@ func (store *PgStore) stash2(tx *sql.Tx, art *Article) (string, error) {
 		art.CanonicalURL,
 		art.Headline,
 		art.Content,
-		art.Published,
-		art.Updated,
+		cvtTime(art.Published),
+		cvtTime(art.Updated),
 		pubID).Scan(&artID)
 	if err != nil {
 		return "", err

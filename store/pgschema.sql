@@ -19,8 +19,8 @@ CREATE TABLE article (
     canonical_url TEXT NOT NULL,
     headline TEXT NOT NULL,
     content TEXT NOT NULL DEFAULT '',
-    published TEXT NOT NULL DEFAULT '',
-    updated TEXT NOT NULL DEFAULT '',
+    published TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    updated TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     publication_id INT NOT NULL REFERENCES publication (id)
     -- keywords
 );
