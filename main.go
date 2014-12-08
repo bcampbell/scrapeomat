@@ -24,6 +24,7 @@ func main() {
 	var archiveDirFlag = flag.String("a", "archive", "archive dir to dump .warc files into")
 	var inputListFlag = flag.String("i", "", "input file of URLs (runs scrapers then exit)")
 	var databaseURLFlag = flag.String("db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	var portFlag = flag.Int("port", -1, "Run api server on port (-1= don't run it)")
 	flag.Parse()
 
 	// scraper configuration
@@ -70,8 +71,9 @@ func main() {
 
 	// which sites?
 	targetSites := flag.Args()
-	if len(targetSites) == 0 {
-		// no sites specified on commandline - do the lot (ie default behaviour)
+	if len(targetSites) == 1 && targetSites[0] == "ALL" {
+		// do the lot
+		targetSites = []string{}
 		for siteName, _ := range scrapers {
 			targetSites = append(targetSites, siteName)
 		}
@@ -191,9 +193,17 @@ func main() {
 		}()
 	}
 
-	// run server
-	fmt.Printf("Running server: http://localhost:12345/all\n")
-	server.Run(db, 12345)
+	if *portFlag > 0 {
+
+		// run server
+
+		fmt.Printf("start server: http://localhost:%d/all\n", *portFlag)
+		err := server.Run(db, *portFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start server on port %d: %s\n", *portFlag, err)
+			os.Exit(1)
+		}
+	}
 
 	wg.Wait()
 }

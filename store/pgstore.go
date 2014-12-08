@@ -163,37 +163,75 @@ func (store *PgStore) Fetch(abort <-chan struct{}) <-chan FetchedArt {
 	c := make(chan FetchedArt)
 	go func() {
 		defer close(c)
-		rows, err := store.db.Query("SELECT id,headline FROM article LIMIT 1000")
+		artRows, err := store.db.Query(`SELECT a.id,a.headline,a.content,a.published,a.updated,p.code,p.name,p.domain FROM (article a INNER JOIN publication p ON a.publication_id=p.id) LIMIT 1000`)
 		if err != nil {
 			c <- FetchedArt{nil, err}
 			return
 		}
-		defer rows.Close()
-		for rows.Next() {
+		defer artRows.Close()
+		for artRows.Next() {
 			select {
 			case <-abort:
-				fmt.Printf("aborted.\n")
+				fmt.Printf("fetch aborted.\n")
 				return
 			default:
 			}
 
-			time.Sleep(1000 * time.Millisecond)
-
 			var id int
 			var art Article
-			if err := rows.Scan(&id, &art.Headline); err != nil {
+			var p = &art.Publication
+
+			var published, updated pq.NullTime
+			if err := artRows.Scan(&id, &art.Headline, &art.Content, &published, &updated, &p.Code, &p.Name, &p.Domain); err != nil {
 				c <- FetchedArt{nil, err}
 				return
 			}
+
+			if published.Valid {
+				art.Published = published.Time.Format(time.RFC3339)
+			}
+			if updated.Valid {
+				art.Updated = updated.Time.Format(time.RFC3339)
+			}
+
+			urls, err := store.fetchURLs(id)
+			if err != nil {
+				c <- FetchedArt{nil, err}
+				return
+			}
+			art.URLs = urls
+
+			// TODO: authors, keywords
+
 			fmt.Printf("send %d: %s\n", id, art.Headline)
 			c <- FetchedArt{&art, nil}
 
 		}
-		if err := rows.Err(); err != nil {
+		if err := artRows.Err(); err != nil {
 			c <- FetchedArt{nil, err}
 			return
 		}
 
 	}()
 	return c
+}
+
+func (store *PgStore) fetchURLs(artID int) ([]string, error) {
+	rows, err := store.db.Query(`SELECT url FROM article_url WHERE id=$1`, artID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
