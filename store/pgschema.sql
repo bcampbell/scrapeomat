@@ -37,8 +37,8 @@ CREATE INDEX ON author(id);
 
 CREATE TABLE author_attr (
     id SERIAL PRIMARY KEY,
-    author_id INT NOT NULL REFERENCES author (id),
-    article_id INT NOT NULL REFERENCES article (id)
+    author_id INT NOT NULL REFERENCES author (id) ON DELETE CASCADE,
+    article_id INT NOT NULL REFERENCES article (id) ON DELETE CASCADE
 );
 CREATE INDEX ON author_attr(author_id);
 CREATE INDEX ON author_attr(article_id);
@@ -46,7 +46,7 @@ CREATE INDEX ON author_attr(article_id);
 CREATE TABLE article_url (
     id SERIAL PRIMARY KEY,
     url TEXT NOT NULL UNIQUE,
-    article_id INT NOT NULL REFERENCES article (id)
+    article_id INT NOT NULL REFERENCES article (id) ON DELETE CASCADE
 );
 CREATE INDEX ON article_url(id);
 CREATE INDEX ON article_url(article_id);
