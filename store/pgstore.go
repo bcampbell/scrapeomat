@@ -159,11 +159,17 @@ func (store *PgStore) findOrCreatePublication(tx *sql.Tx, pub *Publication) (int
 	return pubID, nil
 }
 
-func (store *PgStore) Fetch(abort <-chan struct{}) <-chan FetchedArt {
+func (store *PgStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) <-chan FetchedArt {
+
+	rangeTo = rangeTo.AddDate(0, 0, 1)
+
 	c := make(chan FetchedArt)
 	go func() {
 		defer close(c)
-		artRows, err := store.db.Query(`SELECT a.id,a.headline,a.content,a.published,a.updated,p.code,p.name,p.domain FROM (article a INNER JOIN publication p ON a.publication_id=p.id) LIMIT 1000`)
+		artRows, err := store.db.Query(`SELECT a.id,a.headline,a.content,a.published,a.updated,p.code,p.name,p.domain
+            FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
+            WHERE a.published>=$1 AND a.published<$2`,
+			rangeFrom, rangeTo)
 		if err != nil {
 			c <- FetchedArt{nil, err}
 			return
@@ -203,7 +209,7 @@ func (store *PgStore) Fetch(abort <-chan struct{}) <-chan FetchedArt {
 
 			// TODO: authors, keywords
 
-			fmt.Printf("send %d: %s\n", id, art.Headline)
+			//			fmt.Printf("send %d: %s\n", id, art.Headline)
 			c <- FetchedArt{&art, nil}
 
 		}

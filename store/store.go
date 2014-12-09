@@ -3,6 +3,7 @@ package store
 import (
 	//	"encoding/json"
 	"fmt"
+	"time"
 )
 
 type FetchedArt struct {
@@ -21,7 +22,7 @@ type Store interface {
 	Stash(*Article) (string, error)
 	Close()
 
-	Fetch(abort <-chan struct{}) (c <-chan FetchedArt)
+	Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) (c <-chan FetchedArt)
 }
 
 // TestStore is a null store which does nothing
@@ -47,7 +48,7 @@ func (store *TestStore) Stash(art *Article) (string, error) {
 	return "", nil
 }
 
-func (store *TestStore) Fetch(abort <-chan struct{}) chan<- FetchedArt {
+func (store *TestStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) chan<- FetchedArt {
 
 	c := make(chan FetchedArt)
 	go func() {

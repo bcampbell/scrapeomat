@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"semprini/scrapeomat/store"
+	"time"
 )
 
 func Run(db store.Store, port int) error {
@@ -19,32 +20,52 @@ type Context struct {
 	db store.Store
 }
 
-func handler(ctx *Context, w http.ResponseWriter, r *http.Request) {
-	abort := make(chan struct{})
-	c := ctx.db.Fetch(abort)
+type Msg struct {
+	Article *store.Article `json:"article,omitempty"`
+	Error   string         `json:"error,omitempty"`
+}
 
+func handler(ctx *Context, w http.ResponseWriter, r *http.Request) {
+
+	const dateFmt = "2006-01-02"
+	from, err := time.Parse(dateFmt, r.FormValue("from"))
+	if err != nil {
+		http.Error(w, "bad/missing 'from' param", 400)
+		return
+	}
+	to, err := time.Parse(dateFmt, r.FormValue("to"))
+	if err != nil {
+		http.Error(w, "bad/missing 'to' param", 400)
+		return
+	}
+
+	abort := make(chan struct{})
+	defer close(abort)
+	c := ctx.db.Fetch(abort, from, to)
 	for fetched := range c {
+		msg := Msg{}
 		if fetched.Err == nil {
-			outBuf, err := json.Marshal(fetched.Art)
-			if err != nil {
-				fmt.Printf("json encoding error: %s\n", err)
-				abort <- struct{}{}
-				return
-			}
-			_, err = w.Write(outBuf)
-			if err != nil {
-				fmt.Printf("write error: %s\n", err)
-				abort <- struct{}{}
-				return
-			}
+			msg.Article = fetched.Art
 		} else {
-			// failed during fetch...
-			fmt.Printf("fetch error: %s\n", fetched.Err)
-			// TODO: inform client properly!
-			w.Write([]byte("POOP!"))
+			msg.Error = fmt.Sprintf("fetch error: %s\n", fetched.Err)
+			fmt.Println(msg.Error)
+		}
+		outBuf, err := json.Marshal(msg)
+		if err != nil {
+			fmt.Printf("json encoding error: %s\n", err)
+			abort <- struct{}{}
+			return
+		}
+		_, err = w.Write(outBuf)
+		if err != nil {
+			fmt.Printf("write error: %s\n", err)
+			abort <- struct{}{}
 			return
 		}
 
+		if fetched.Err != nil {
+			return
+		}
 	}
 
 }
