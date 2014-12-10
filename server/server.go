@@ -23,6 +23,12 @@ type Context struct {
 type Msg struct {
 	Article *store.Article `json:"article,omitempty"`
 	Error   string         `json:"error,omitempty"`
+	/*
+		Info    struct {
+			Sent  int
+			Total int
+		} `json:"info,omitempty"`
+	*/
 }
 
 func handler(ctx *Context, w http.ResponseWriter, r *http.Request) {
@@ -41,6 +47,17 @@ func handler(ctx *Context, w http.ResponseWriter, r *http.Request) {
 
 	abort := make(chan struct{})
 	defer close(abort)
+	fmt.Printf("Start fetch request: %s...%s\n", from, to)
+	totalArts, err := ctx.db.FetchCount(from, to)
+	if err != nil {
+		// TODO: should send error via json
+		http.Error(w, fmt.Sprintf("DB error: %s", err), 500)
+		return
+	}
+	fmt.Printf("%d articles to send\n", totalArts)
+
+	sent := 0
+
 	c := ctx.db.Fetch(abort, from, to)
 	for fetched := range c {
 		msg := Msg{}
@@ -63,7 +80,12 @@ func handler(ctx *Context, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if fetched.Err != nil {
+		if fetched.Err == nil {
+			sent++
+			if (sent % 10) == 0 {
+				fmt.Printf("Sent %d/%d\n", sent, totalArts)
+			}
+		} else {
 			return
 		}
 	}

@@ -23,6 +23,7 @@ type Store interface {
 	Close()
 
 	Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) (c <-chan FetchedArt)
+	FetchCount(rangeFrom time.Time, rangeTo time.Time) (int, error)
 }
 
 // TestStore is a null store which does nothing
@@ -46,6 +47,10 @@ func (store *TestStore) Stash(art *Article) (string, error) {
 	}
 	fmt.Printf("%s \"%s\" [%s]\n", art.Published, art.Headline, art.CanonicalURL)
 	return "", nil
+}
+
+func (store *TestStore) FetchCount(rangeFrom time.Time, rangeTo time.Time) (int, error) {
+	return 0, nil
 }
 
 func (store *TestStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) chan<- FetchedArt {

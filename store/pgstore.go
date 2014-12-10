@@ -159,6 +159,13 @@ func (store *PgStore) findOrCreatePublication(tx *sql.Tx, pub *Publication) (int
 	return pubID, nil
 }
 
+func (store *PgStore) FetchCount(rangeFrom time.Time, rangeTo time.Time) (int, error) {
+	rangeTo = rangeTo.AddDate(0, 0, 1)
+	var cnt int
+	err := store.db.QueryRow(`SELECT COUNT(*) FROM article WHERE published>=$1 AND published<$2`, rangeFrom, rangeTo).Scan(&cnt)
+	return cnt, err
+}
+
 func (store *PgStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) <-chan FetchedArt {
 
 	rangeTo = rangeTo.AddDate(0, 0, 1)
@@ -166,7 +173,7 @@ func (store *PgStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo 
 	c := make(chan FetchedArt)
 	go func() {
 		defer close(c)
-		artRows, err := store.db.Query(`SELECT a.id,a.headline,a.content,a.published,a.updated,p.code,p.name,p.domain
+		artRows, err := store.db.Query(`SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,p.code,p.name,p.domain
             FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
             WHERE a.published>=$1 AND a.published<$2`,
 			rangeFrom, rangeTo)
@@ -188,7 +195,7 @@ func (store *PgStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo 
 			var p = &art.Publication
 
 			var published, updated pq.NullTime
-			if err := artRows.Scan(&id, &art.Headline, &art.Content, &published, &updated, &p.Code, &p.Name, &p.Domain); err != nil {
+			if err := artRows.Scan(&id, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &p.Code, &p.Name, &p.Domain); err != nil {
 				c <- FetchedArt{nil, err}
 				return
 			}
