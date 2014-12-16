@@ -230,7 +230,7 @@ func (store *PgStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo 
 }
 
 func (store *PgStore) fetchURLs(artID int) ([]string, error) {
-	rows, err := store.db.Query(`SELECT url FROM article_url WHERE id=$1`, artID)
+	rows, err := store.db.Query(`SELECT url FROM article_url WHERE article_id=$1`, artID)
 	if err != nil {
 		return nil, err
 	}
