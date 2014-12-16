@@ -263,7 +263,7 @@ func (scraper *Scraper) ScrapeArt(c *http.Client, artURL string) (*store.Article
 		return nil, err
 	}
 
-	scraped, err := arts.ExtractHTML(rawHTML, artURL)
+	scraped, err := arts.ExtractFromHTML(rawHTML, artURL)
 	if err != nil {
 		return nil, err
 	}
