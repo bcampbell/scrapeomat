@@ -1,7 +1,8 @@
 package main
 
 // rescrape is a tool which goes through a directory of .warc files
-// scrapes articles from them and loads those articles into mongodb.
+// scrapes articles from them and loads those articles into
+// the scrapeomat store.
 // It'll descend into subdirectories as it searches for .warc files.
 //
 // caveats:
@@ -37,7 +38,7 @@ func worker(db store.Store, fileChan chan string, wg *sync.WaitGroup) {
 
 // scrape a .warc file, stash result in db
 func process(db store.Store, f string) {
-	art, err := fromWARC(f)
+	scraped, err := fromWARC(f)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s FAILED: %s\n", f, err)
 		return
@@ -45,6 +46,19 @@ func process(db store.Store, f string) {
 
 	// store in database
 	//fmt.Printf("stash %s: %v", f, art.URLs)
+
+	// FUDGE!
+	art := store.ConvertArticle(scraped)
+	art.Publication.Code = "thetimes"
+
+	fmt.Println(art.Published)
+
+	urls, err := db.WhichAreNew(art.URLs)
+	if len(urls) != len(art.URLs) {
+		fmt.Fprintf(os.Stderr, "got %s already\n", art.URLs[0])
+		return
+	}
+
 	_, err = db.Stash(art)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s stash FAILED: %s\n", f, err)
@@ -77,17 +91,36 @@ func findWarcFiles(start string) []string {
 	return files
 }
 
-func main() {
+var opts struct {
+	databaseURL string
+}
 
-	var databaseURL = flag.String("database", "", "mongodb database url")
-	flag.Parse()
-
-	if flag.NArg() != 1 || *databaseURL == "" {
-		fmt.Printf("usage: rescrape --database=<url> dir\n")
-		return
+func openStore(connStr string) (store.Store, error) {
+	if connStr == "" {
+		connStr = os.Getenv("SCRAPEOMAT_DB")
 	}
 
-	db := store.NewMongoStore(*databaseURL)
+	if connStr == "" {
+		return nil, fmt.Errorf("no database specified (use -db flag or set $SCRAPEOMAT_DB)")
+	}
+
+	db, err := store.NewPgStore(connStr)
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+func main() {
+
+	flag.StringVar(&opts.databaseURL, "db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	flag.Parse()
+
+	db, err := openStore(opts.databaseURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+		os.Exit(1)
+	}
 	defer db.Close()
 
 	var wg sync.WaitGroup
@@ -95,7 +128,9 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	fmt.Printf("MAXPROCS=%d dir=%s\n", runtime.GOMAXPROCS(0), flag.Arg(0))
 
-	files := findWarcFiles(flag.Arg(0))
+	//	files := findWarcFiles(flag.Arg(0))
+
+	files := flag.Args()
 
 	// create workers
 	fileChan := make(chan string)
@@ -147,7 +182,7 @@ func fromWARC(filename string) (*arts.Article, error) {
 			return nil, err
 		}
 		// TODO: arts should allow passing in raw response? or header + body?
-		return arts.ExtractHTML(rawHTML, reqURL)
+		return arts.ExtractFromHTML(rawHTML, reqURL)
 	}
 
 }
