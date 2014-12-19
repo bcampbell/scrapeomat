@@ -10,41 +10,35 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"path"
+	"path/filepath"
 	"semprini/scrapeomat/server"
 	"semprini/scrapeomat/store"
 	"strings"
 	"sync"
 )
 
+var opts struct {
+	verbosity         int
+	scraperConfigPath string
+	archivePath       string
+}
+
 func main() {
+	flag.IntVar(&opts.verbosity, "v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
+	flag.StringVar(&opts.scraperConfigPath, "s", "scrapers", "path for scraper configs")
+	flag.StringVar(&opts.archivePath, "a", "archive", "archive dir to dump .warc files into")
 	var listFlag = flag.Bool("l", false, "List target sites and exit")
 	var discoverFlag = flag.Bool("discover", false, "run discovery for target sites, output article links to stdout, then exit")
-	var verbosityFlag = flag.Int("v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
-	var scrapersConfigFlag = flag.String("s", "scrapers.cfg", "config file for scrapers")
-	var archiveDirFlag = flag.String("a", "archive", "archive dir to dump .warc files into")
 	var inputListFlag = flag.String("i", "", "input file of URLs (runs scrapers then exit)")
 	var databaseURLFlag = flag.String("db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
 	var portFlag = flag.Int("port", -1, "Run api server on port (-1= don't run it)")
 	flag.Parse()
 
-	// scraper configuration
-	scrapersCfg := struct {
-		Scraper map[string]*ScraperConf
-	}{}
-	err := gcfg.ReadFileInto(&scrapersCfg, *scrapersConfigFlag)
+	scrapers, err := buildScrapers()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
-	}
-
-	// build scrapers from configuration entries
-	scrapers := make(map[string]*Scraper)
-	for name, conf := range scrapersCfg.Scraper {
-		scraper, err := NewScraper(name, conf, *verbosityFlag, *archiveDirFlag)
-		if err != nil {
-			panic(err)
-		}
-		scrapers[name] = scraper
 	}
 
 	if *listFlag {
@@ -206,4 +200,37 @@ func main() {
 	}
 
 	wg.Wait()
+}
+
+func buildScrapers() (map[string]*Scraper, error) {
+	// scraper configuration
+	scrapersCfg := struct {
+		Scraper map[string]*ScraperConf
+	}{}
+
+	configFiles, err := filepath.Glob(path.Join(opts.scraperConfigPath, "*.cfg"))
+	if err != nil {
+		return nil, err
+	}
+	if configFiles == nil {
+		return nil, fmt.Errorf("no scraper config files found (in \"%s\")", opts.scraperConfigPath)
+	}
+
+	for _, fileName := range configFiles {
+		err = gcfg.ReadFileInto(&scrapersCfg, fileName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// build scrapers from configuration entries
+	scrapers := make(map[string]*Scraper)
+	for name, conf := range scrapersCfg.Scraper {
+		scraper, err := NewScraper(name, conf, opts.verbosity, opts.archivePath)
+		if err != nil {
+			return nil, err
+		}
+		scrapers[name] = scraper
+	}
+	return scrapers, nil
 }
