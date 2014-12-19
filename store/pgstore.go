@@ -47,6 +47,8 @@ func (store *PgStore) Stash(art *Article) (string, error) {
 
 var timeFmts = []string{
 	time.RFC3339,
+	"2006-01-02T15:04Z07:00",
+	//	"2006-01-02T15:04:05Z",
 	"2006-01-02T15:04:05",
 	"2006-01-02T15:04",
 	"2006-01-02",
