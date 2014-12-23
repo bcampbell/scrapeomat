@@ -11,6 +11,14 @@ type FetchedArt struct {
 	Err error
 }
 
+type Filter struct {
+	PubFrom   time.Time
+	PubTo     time.Time
+	AddedFrom time.Time
+	AddedTo   time.Time
+	PubCodes  []string
+}
+
 type Store interface {
 	WhichAreNew([]string) ([]string, error)
 
@@ -22,8 +30,8 @@ type Store interface {
 	Stash(*Article) (string, error)
 	Close()
 
-	Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) (c <-chan FetchedArt)
-	FetchCount(rangeFrom time.Time, rangeTo time.Time) (int, error)
+	Fetch(abort <-chan struct{}, filt *Filter) (c <-chan FetchedArt)
+	FetchCount(filt *Filter) (int, error)
 }
 
 // TestStore is a null store which does nothing
@@ -49,11 +57,11 @@ func (store *TestStore) Stash(art *Article) (string, error) {
 	return "", nil
 }
 
-func (store *TestStore) FetchCount(rangeFrom time.Time, rangeTo time.Time) (int, error) {
+func (store *TestStore) FetchCount(filt *Filter) (int, error) {
 	return 0, nil
 }
 
-func (store *TestStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) chan<- FetchedArt {
+func (store *TestStore) Fetch(abort <-chan struct{}, filt *Filter) chan<- FetchedArt {
 
 	c := make(chan FetchedArt)
 	go func() {

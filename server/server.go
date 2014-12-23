@@ -10,7 +10,7 @@ import (
 
 func Run(db store.Store, port int) error {
 	http.HandleFunc("/all", func(w http.ResponseWriter, r *http.Request) {
-		handler(&Context{db: db}, w, r)
+		slurpHandler(&Context{db: db}, w, r)
 	})
 
 	return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
@@ -31,7 +31,7 @@ type Msg struct {
 	*/
 }
 
-func handler(ctx *Context, w http.ResponseWriter, r *http.Request) {
+func slurpHandler(ctx *Context, w http.ResponseWriter, r *http.Request) {
 
 	const dateFmt = "2006-01-02"
 	from, err := time.Parse(dateFmt, r.FormValue("from"))
@@ -44,11 +44,15 @@ func handler(ctx *Context, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad/missing 'to' param", 400)
 		return
 	}
+	to = to.AddDate(0, 0, 1) // add one day
+
+	filt := &store.Filter{PubFrom: from, PubTo: to}
 
 	abort := make(chan struct{})
 	defer close(abort)
 	fmt.Printf("Start fetch request: %s...%s\n", from, to)
-	totalArts, err := ctx.db.FetchCount(from, to)
+
+	totalArts, err := ctx.db.FetchCount(filt)
 	if err != nil {
 		// TODO: should send error via json
 		http.Error(w, fmt.Sprintf("DB error: %s", err), 500)
@@ -58,7 +62,7 @@ func handler(ctx *Context, w http.ResponseWriter, r *http.Request) {
 
 	sent := 0
 
-	c := ctx.db.Fetch(abort, from, to)
+	c := ctx.db.Fetch(abort, filt)
 	for fetched := range c {
 		msg := Msg{}
 		if fetched.Err == nil {

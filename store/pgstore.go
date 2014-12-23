@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/lib/pq"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -161,24 +162,88 @@ func (store *PgStore) findOrCreatePublication(tx *sql.Tx, pub *Publication) (int
 	return pubID, nil
 }
 
-func (store *PgStore) FetchCount(rangeFrom time.Time, rangeTo time.Time) (int, error) {
-	rangeTo = rangeTo.AddDate(0, 0, 1)
+type frag struct {
+	fmt    string
+	params []interface{}
+}
+
+func (f frag) build(baseIdx int) (string, []interface{}) {
+	indices := make([]interface{}, len(f.params))
+	for i := 0; i < len(f.params); i++ {
+		indices[i] = baseIdx + i
+	}
+	return fmt.Sprintf(f.fmt, indices...), f.params
+}
+
+type fragList []frag
+
+func (l *fragList) Add(fmt string, params ...interface{}) {
+	*l = append(*l, frag{fmt, params})
+}
+
+func buildWhere(filt *Filter) (string, []interface{}) {
+	//var idx int = 1
+	frags := &fragList{}
+
+	if !filt.PubFrom.IsZero() {
+		frags.Add("a.published>=$%d", filt.PubFrom)
+	}
+	if !filt.PubTo.IsZero() {
+		frags.Add("a.published<$%d", filt.PubTo)
+	}
+	if !filt.AddedFrom.IsZero() {
+		frags.Add("a.added>=$%d", filt.AddedFrom)
+	}
+	if !filt.AddedTo.IsZero() {
+		frags.Add("a.added<$%d", filt.AddedTo)
+	}
+
+	if len(filt.PubCodes) > 0 {
+		foo := []string{}
+		bar := []interface{}{}
+		for _, code := range filt.PubCodes {
+			foo = append(foo, "$%d")
+			bar = append(bar, code)
+		}
+		frags.Add("p.code IN ("+strings.Join(foo, ",")+")", bar...)
+	}
+
+	var idx int = 1
+	params := []interface{}{}
+	subStrs := []string{}
+	for _, f := range *frags {
+		s, p := f.build(idx)
+		subStrs = append(subStrs, s)
+		params = append(params, f.params...)
+		idx += len(p)
+	}
+
+	return strings.Join(subStrs, " AND "), params
+}
+
+func (store *PgStore) FetchCount(filt *Filter) (int, error) {
+	whereClause, params := buildWhere(filt)
+	q := `SELECT COUNT(*)
+           FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
+           WHERE ` + whereClause
 	var cnt int
-	err := store.db.QueryRow(`SELECT COUNT(*) FROM article WHERE published>=$1 AND published<$2`, rangeFrom, rangeTo).Scan(&cnt)
+	err := store.db.QueryRow(q, params...).Scan(&cnt)
 	return cnt, err
 }
 
-func (store *PgStore) Fetch(abort <-chan struct{}, rangeFrom time.Time, rangeTo time.Time) <-chan FetchedArt {
+func (store *PgStore) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt {
 
-	rangeTo = rangeTo.AddDate(0, 0, 1)
+	whereClause, params := buildWhere(filt)
 
 	c := make(chan FetchedArt)
 	go func() {
 		defer close(c)
-		artRows, err := store.db.Query(`SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,p.code,p.name,p.domain
-            FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
-            WHERE a.published>=$1 AND a.published<$2`,
-			rangeFrom, rangeTo)
+
+		q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,p.code,p.name,p.domain
+	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
+	               WHERE ` + whereClause
+
+		artRows, err := store.db.Query(q, params...)
 		if err != nil {
 			c <- FetchedArt{nil, err}
 			return
