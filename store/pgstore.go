@@ -180,8 +180,22 @@ type fragList []frag
 func (l *fragList) Add(fmt string, params ...interface{}) {
 	*l = append(*l, frag{fmt, params})
 }
+func (frags *fragList) Render() (string, []interface{}) {
 
-func buildWhere(filt *Filter) (string, []interface{}) {
+	var idx int = 1
+	params := []interface{}{}
+	subStrs := []string{}
+	for _, f := range *frags {
+		s, p := f.build(idx)
+		subStrs = append(subStrs, s)
+		params = append(params, f.params...)
+		idx += len(p)
+	}
+
+	return strings.Join(subStrs, " AND "), params
+}
+
+func buildWhere(filt *Filter) *fragList {
 	//var idx int = 1
 	frags := &fragList{}
 
@@ -208,21 +222,11 @@ func buildWhere(filt *Filter) (string, []interface{}) {
 		frags.Add("p.code IN ("+strings.Join(foo, ",")+")", bar...)
 	}
 
-	var idx int = 1
-	params := []interface{}{}
-	subStrs := []string{}
-	for _, f := range *frags {
-		s, p := f.build(idx)
-		subStrs = append(subStrs, s)
-		params = append(params, f.params...)
-		idx += len(p)
-	}
-
-	return strings.Join(subStrs, " AND "), params
+	return frags
 }
 
 func (store *PgStore) FetchCount(filt *Filter) (int, error) {
-	whereClause, params := buildWhere(filt)
+	whereClause, params := buildWhere(filt).Render()
 	q := `SELECT COUNT(*)
            FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
            WHERE ` + whereClause
@@ -233,15 +237,21 @@ func (store *PgStore) FetchCount(filt *Filter) (int, error) {
 
 func (store *PgStore) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt {
 
-	whereClause, params := buildWhere(filt)
-
+	whereClause, params := buildWhere(filt).Render()
 	c := make(chan FetchedArt)
 	go func() {
 		defer close(c)
 
 		q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
-	               WHERE ` + whereClause
+	               WHERE ` + whereClause + ` ORDER BY published DESC`
+
+		if filt.Limit > 0 {
+			q += fmt.Sprintf(" LIMIT %d", filt.Limit)
+		}
+		if filt.Offset > 0 {
+			q += fmt.Sprintf(" OFFSET %d", filt.Offset)
+		}
 
 		artRows, err := store.db.Query(q, params...)
 		if err != nil {

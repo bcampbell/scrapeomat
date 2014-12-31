@@ -17,6 +17,8 @@ type Filter struct {
 	AddedFrom time.Time
 	AddedTo   time.Time
 	PubCodes  []string
+	Offset    int
+	Limit     int
 }
 
 type Store interface {
