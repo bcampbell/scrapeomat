@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/PuerkitoBio/purell"
 	"github.com/bcampbell/arts/arts"
 	"io/ioutil"
 	"log"
@@ -87,7 +88,10 @@ func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
 
 	foundArts := make([]string, 0, len(artLinks))
 	for l, _ := range artLinks {
-		foundArts = append(foundArts, l.String())
+		// normalise urls as we go (strip trailing /, etc)
+		u := purell.NormalizeURL(&l, purell.FlagsUsuallySafeGreedy)
+
+		foundArts = append(foundArts, u)
 	}
 	return foundArts, nil
 }
@@ -198,6 +202,7 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.
 
 	// fetch and extract 'em
 	for _, artURL := range newArts {
+		scraper.infoLog.Printf("fetch/scrape %s", artURL)
 		art, err := scraper.ScrapeArt(c, artURL)
 		if err != nil {
 			scraper.errorLog.Printf("%s\n", err)
