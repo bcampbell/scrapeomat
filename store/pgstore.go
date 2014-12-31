@@ -11,7 +11,8 @@ import (
 
 // PgStore stashes articles in a postgresql db
 type PgStore struct {
-	db *sql.DB
+	db  *sql.DB
+	loc *time.Location
 }
 
 // eg "postgres://username@localhost/dbname"
@@ -21,7 +22,16 @@ func NewPgStore(connStr string) (*PgStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	store := PgStore{db: db}
+
+	// our assumed location for publication dates, when no timezone given
+	// TODO: this is the wrong place for it. Scraper should handle this on a per-publication basis
+	loc, err := time.LoadLocation("Europe/London")
+	if err != nil {
+		return nil, err
+	}
+
+	store := PgStore{db: db, loc: loc}
+
 	return &store, nil
 }
 
@@ -55,9 +65,9 @@ var timeFmts = []string{
 	"2006-01-02",
 }
 
-func cvtTime(timestamp string) pq.NullTime {
+func (store *PgStore) cvtTime(timestamp string) pq.NullTime {
 	for _, layout := range timeFmts {
-		t, err := time.Parse(layout, timestamp)
+		t, err := time.ParseInLocation(layout, timestamp, store.loc)
 		if err == nil {
 			return pq.NullTime{Time: t, Valid: true}
 		}
@@ -80,8 +90,8 @@ func (store *PgStore) stash2(tx *sql.Tx, art *Article) (string, error) {
 		art.CanonicalURL,
 		art.Headline,
 		art.Content,
-		cvtTime(art.Published),
-		cvtTime(art.Updated),
+		store.cvtTime(art.Published),
+		store.cvtTime(art.Updated),
 		pubID).Scan(&artID)
 	if err != nil {
 		return "", err
