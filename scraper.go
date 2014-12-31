@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/PuerkitoBio/purell"
 	"github.com/bcampbell/arts/arts"
 	"io/ioutil"
 	"log"
@@ -88,10 +87,7 @@ func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
 
 	foundArts := make([]string, 0, len(artLinks))
 	for l, _ := range artLinks {
-		// normalise urls as we go (strip trailing /, etc)
-		u := purell.NormalizeURL(&l, purell.FlagsUsuallySafeGreedy)
-
-		foundArts = append(foundArts, u)
+		foundArts = append(foundArts, l.String())
 	}
 	return foundArts, nil
 }
@@ -198,11 +194,11 @@ func (scraper *Scraper) DoRunFromList(arts []string, db store.Store, c *http.Cli
 }
 
 func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.Client) error {
-	scraper.infoLog.Printf("Start scraping\n")
+	//scraper.infoLog.Printf("Start scraping\n")
 
 	// fetch and extract 'em
 	for _, artURL := range newArts {
-		scraper.infoLog.Printf("fetch/scrape %s", artURL)
+		//		scraper.infoLog.Printf("fetch/scrape %s", artURL)
 		art, err := scraper.ScrapeArt(c, artURL)
 		if err != nil {
 			scraper.errorLog.Printf("%s\n", err)
@@ -217,7 +213,7 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.
 		// STASH
 		_, err = db.Stash(art)
 		if err != nil {
-			scraper.errorLog.Printf("stash failure: %s\n", err)
+			scraper.errorLog.Printf("stash failure on: %s (on %s)\n", err, artURL)
 			scraper.stats.ErrorCount += 1
 			if scraper.stats.ErrorCount > 50+len(newArts)/10 {
 				return fmt.Errorf("too many errors (%d)", scraper.stats.ErrorCount)

@@ -177,10 +177,8 @@ func main() {
 			defer wg.Done()
 			var client *http.Client
 			if scraper.Conf.Cookies {
-				scraper.infoLog.Printf("using cookies")
 				client = politeClientWithCookies
 			} else {
-				scraper.infoLog.Printf("not using cookies")
 				client = politeClient
 			}
 			scraper.Start(db, client)

@@ -14,6 +14,7 @@ import (
 	"code.google.com/p/cascadia"
 	"errors"
 	"fmt"
+	"github.com/PuerkitoBio/purell"
 	"golang.org/x/net/html"
 	"net/http"
 	"net/url"
@@ -217,6 +218,14 @@ func (disc *Discoverer) findArticles(baseURL *url.URL, root *html.Node) (LinkSet
 func (disc *Discoverer) CookArticleURL(baseURL *url.URL, artLink string) (*url.URL, error) {
 	// parse, extending to absolute
 	u, err := baseURL.Parse(artLink)
+	if err != nil {
+		return nil, err
+	}
+
+	// normalise url (strip trailing /, etc)
+	normalised := purell.NormalizeURL(u, purell.FlagsUsuallySafeGreedy)
+	// need it back as a url.URL
+	u, err = url.Parse(normalised)
 	if err != nil {
 		return nil, err
 	}
