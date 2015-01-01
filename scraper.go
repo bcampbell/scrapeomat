@@ -203,7 +203,7 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.
 		if err != nil {
 			scraper.errorLog.Printf("%s\n", err)
 			scraper.stats.ErrorCount += 1
-			if scraper.stats.ErrorCount > 50+len(newArts)/10 {
+			if scraper.stats.ErrorCount > 100+len(newArts)/10 {
 				return fmt.Errorf("too many errors (%d)", scraper.stats.ErrorCount)
 			}
 			continue
@@ -215,7 +215,7 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.
 		if err != nil {
 			scraper.errorLog.Printf("stash failure on: %s (on %s)\n", err, artURL)
 			scraper.stats.ErrorCount += 1
-			if scraper.stats.ErrorCount > 50+len(newArts)/10 {
+			if scraper.stats.ErrorCount > 100+len(newArts)/10 {
 				return fmt.Errorf("too many errors (%d)", scraper.stats.ErrorCount)
 			}
 			continue
