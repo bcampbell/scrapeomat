@@ -340,7 +340,14 @@ func (store *PgStore) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedA
 			}
 			art.URLs = urls
 
-			// TODO: authors, keywords
+			authors, err := store.fetchAuthors(id)
+			if err != nil {
+				c <- FetchedArt{nil, err}
+				return
+			}
+			art.Authors = authors
+
+			// TODO: keywords
 
 			//			fmt.Printf("send %d: %s\n", id, art.Headline)
 			c <- FetchedArt{&art, nil}
@@ -368,6 +375,29 @@ func (store *PgStore) fetchURLs(artID int) ([]string, error) {
 			return nil, err
 		}
 		out = append(out, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (store *PgStore) fetchAuthors(artID int) ([]Author, error) {
+	q := `SELECT name,rel_link,email,twitter
+        FROM (author a INNER JOIN author_attr attr ON attr.author_id=a.id)
+        WHERE article_id=$1`
+	rows, err := store.db.Query(q, artID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Author{}
+	for rows.Next() {
+		var a Author
+		if err := rows.Scan(&a.Name, &a.RelLink, &a.Email, &a.Twitter); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
