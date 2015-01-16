@@ -42,7 +42,7 @@ type ScraperConf struct {
 }
 
 func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string) (*Scraper, error) {
-	scraper := Scraper{Name: name, Conf: conf, archiveDir: archiveDir, runPeriod: 6 * time.Hour}
+	scraper := Scraper{Name: name, Conf: conf, archiveDir: archiveDir, runPeriod: 3 * time.Hour}
 
 	scraper.errorLog = log.New(os.Stderr, "ERR "+name+": ", log.LstdFlags)
 	if verbosity > 0 {
