@@ -40,6 +40,7 @@ type Article struct {
 	Updated     string      `json:"updated,omitempty"`
 	Publication Publication `json:"publication,omitempty"`
 	Keywords    []Keyword   `json:"keywords,omitempty"`
+	Section     string      `json:"section,omitempty"`
 }
 
 // copy an arts.Article into our struct
@@ -57,6 +58,7 @@ func ConvertArticle(src *arts.Article) *Article {
 			Domain: src.Publication.Domain,
 		},
 		Keywords: make([]Keyword, len(src.Keywords)),
+		Section:  src.Section,
 	}
 
 	for i, u := range src.URLs {

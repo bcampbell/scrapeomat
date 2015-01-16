@@ -4,6 +4,7 @@ package main
 // scrapes articles from them and loads those articles into
 // the scrapeomat store.
 // It'll descend into subdirectories as it searches for .warc files.
+// Uses multiple CPU cores if available.
 //
 // caveats:
 // it assumes that each .warc file contains a simple request/response
@@ -12,6 +13,10 @@ package main
 // by scrapeomat.
 // Needs some work to generalise it to more complicated .warc arrangements.
 
+//
+// TODO:
+// add option to force replacement of existing articles
+// use scraper configs to apply URL rejection rules + whatever other metadata (eg publication codes)
 import (
 	"bufio"
 	"bytes"
@@ -47,11 +52,9 @@ func process(db store.Store, f string) {
 	// store in database
 	//fmt.Printf("stash %s: %v", f, art.URLs)
 
-	// FUDGE!
 	art := store.ConvertArticle(scraped)
-	art.Publication.Code = "thetimes"
 
-	fmt.Println(art.Published)
+	//	fmt.Println(art.Published)
 
 	urls, err := db.WhichAreNew(art.URLs)
 	if len(urls) != len(art.URLs) {
@@ -128,9 +131,9 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	fmt.Printf("MAXPROCS=%d dir=%s\n", runtime.GOMAXPROCS(0), flag.Arg(0))
 
-	//	files := findWarcFiles(flag.Arg(0))
+	files := findWarcFiles(flag.Arg(0))
 
-	files := flag.Args()
+	//files := flag.Args()
 
 	// create workers
 	fileChan := make(chan string)

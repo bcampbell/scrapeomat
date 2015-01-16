@@ -86,13 +86,14 @@ func (store *PgStore) stash2(tx *sql.Tx, art *Article) (string, error) {
 	}
 
 	var artID int
-	err = tx.QueryRow(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
+	err = tx.QueryRow(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
 		art.CanonicalURL,
 		art.Headline,
 		art.Content,
 		store.cvtTime(art.Published),
 		store.cvtTime(art.Updated),
-		pubID).Scan(&artID)
+		pubID,
+		art.Section).Scan(&artID)
 	if err != nil {
 		return "", err
 	}
@@ -146,23 +147,61 @@ func (store *PgStore) WhichAreNew(artURLs []string) ([]string, error) {
 }
 
 func (store *PgStore) findOrCreatePublication(tx *sql.Tx, pub *Publication) (int, error) {
+	pubID, err := store.findPublication(tx, pub)
+	if err != nil {
+		return 0, err
+	}
+	if pubID != 0 {
+		return pubID, nil
+	}
+	return store.createPublication(tx, pub)
+}
+
+// returns 0 if no match
+func (store *PgStore) findPublication(tx *sql.Tx, pub *Publication) (int, error) {
 	var pubID int
 	var err error
 
-	if pub.Code == "" {
-		return 0, fmt.Errorf("No publication code")
+	if pub.Code != "" {
+
+		err = tx.QueryRow(`SELECT id FROM publication WHERE code=$1`, pub.Code).Scan(&pubID)
+		if err == nil {
+			return pubID, nil // return existing publication
+		}
+		if err != sql.ErrNoRows {
+			return 0, err
+		}
 	}
 
-	err = tx.QueryRow(`SELECT id FROM publication WHERE code=$1`, pub.Code).Scan(&pubID)
-	if err == nil {
-		return pubID, nil // return existing publication
-	}
-	if err != sql.ErrNoRows {
-		return 0, err
+	if pub.Name != "" {
+
+		err = tx.QueryRow(`SELECT id FROM publication WHERE name=$1`, pub.Name).Scan(&pubID)
+		if err == nil {
+			return pubID, nil // return existing publication
+		}
+		if err != sql.ErrNoRows {
+			return 0, err
+		}
 	}
 
+	// TODO: publications can have multiple domains...
+	if pub.Domain != "" {
+		err = tx.QueryRow(`SELECT id FROM publication WHERE domain=$1`, pub.Domain).Scan(&pubID)
+		if err == nil {
+			return pubID, nil // return existing publication
+		}
+		if err != sql.ErrNoRows {
+			return 0, err
+		}
+	}
+
+	return 0, nil // no match
+}
+
+func (store *PgStore) createPublication(tx *sql.Tx, pub *Publication) (int, error) {
 	// create new
-	err = tx.QueryRow(`INSERT INTO publication(code,name,domain) VALUES($1,$2,$3) RETURNING id`,
+	var pubID int
+	err := tx.QueryRow(`INSERT INTO publication(code,name,domain) VALUES($1,$2,$3) RETURNING id`,
 		pub.Code,
 		pub.Name,
 		pub.Domain).Scan(&pubID)
@@ -252,7 +291,7 @@ func (store *PgStore) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedA
 	go func() {
 		defer close(c)
 
-		q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,p.code,p.name,p.domain
+		q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
 	               WHERE ` + whereClause + ` ORDER BY published DESC`
 
@@ -282,7 +321,7 @@ func (store *PgStore) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedA
 			var p = &art.Publication
 
 			var published, updated pq.NullTime
-			if err := artRows.Scan(&id, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &p.Code, &p.Name, &p.Domain); err != nil {
+			if err := artRows.Scan(&id, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &p.Code, &p.Name, &p.Domain); err != nil {
 				c <- FetchedArt{nil, err}
 				return
 			}
