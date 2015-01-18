@@ -109,7 +109,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := store.NewPgStore(connStr)
+	db, err := store.NewStore(connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)

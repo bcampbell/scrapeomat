@@ -93,7 +93,7 @@ func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
 }
 
 // start the scraper, running it at regular intervals
-func (scraper *Scraper) Start(db store.Store, c *http.Client) {
+func (scraper *Scraper) Start(db *store.Store, c *http.Client) {
 	for {
 		lastRun := time.Now()
 		err := scraper.DoRun(db, c)
@@ -109,7 +109,7 @@ func (scraper *Scraper) Start(db store.Store, c *http.Client) {
 }
 
 // perform a single scraper run
-func (scraper *Scraper) DoRun(db store.Store, c *http.Client) error {
+func (scraper *Scraper) DoRun(db *store.Store, c *http.Client) error {
 
 	scraper.infoLog.Printf("start run\n")
 	// reset the stats
@@ -145,7 +145,7 @@ func (scraper *Scraper) DoRun(db store.Store, c *http.Client) error {
 }
 
 // perform a single scraper run, using a list of article URLS instead of invoking the discovery
-func (scraper *Scraper) DoRunFromList(arts []string, db store.Store, c *http.Client) error {
+func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Client) error {
 
 	scraper.infoLog.Printf("start run from list\n")
 	// reset the stats
@@ -193,7 +193,7 @@ func (scraper *Scraper) DoRunFromList(arts []string, db store.Store, c *http.Cli
 	return scraper.FetchAndStash(newArts, db, c)
 }
 
-func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, c *http.Client) error {
+func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, c *http.Client) error {
 	//scraper.infoLog.Printf("Start scraping\n")
 
 	// fetch and extract 'em

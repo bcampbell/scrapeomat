@@ -13,7 +13,7 @@ var tmpls struct {
 	browse *template.Template
 }
 
-func Run(db store.Store, port int) error {
+func Run(db *store.Store, port int) error {
 	var baseTmpl string = `
 <!DOCTYPE html>
 <html>
@@ -58,7 +58,7 @@ func Run(db store.Store, port int) error {
 }
 
 type Context struct {
-	db store.Store
+	db *store.Store
 }
 
 type Msg struct {
