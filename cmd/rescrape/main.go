@@ -15,7 +15,6 @@ package main
 
 //
 // TODO:
-// add option to force replacement of existing articles
 // use scraper configs to apply URL rejection rules + whatever other metadata (eg publication codes)
 import (
 	"bufio"
@@ -33,7 +32,7 @@ import (
 	"sync"
 )
 
-func worker(db store.Store, fileChan chan string, wg *sync.WaitGroup) {
+func worker(db *store.Store, fileChan chan string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for warcFile := range fileChan {
@@ -42,7 +41,7 @@ func worker(db store.Store, fileChan chan string, wg *sync.WaitGroup) {
 }
 
 // scrape a .warc file, stash result in db
-func process(db store.Store, f string) {
+func process(db *store.Store, f string) {
 	scraped, err := fromWARC(f)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s FAILED: %s\n", f, err)
@@ -56,18 +55,33 @@ func process(db store.Store, f string) {
 
 	//	fmt.Println(art.Published)
 
-	urls, err := db.WhichAreNew(art.URLs)
-	if len(urls) != len(art.URLs) {
+	artID, err := db.FindArticle(art.URLs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: FindArticle() FAILED: %s\n", f, err)
+		return
+	}
+
+	alreadyGot := (artID != 0)
+	if alreadyGot && !opts.forceReplace {
 		fmt.Fprintf(os.Stderr, "got %s already\n", art.URLs[0])
 		return
 	}
 
-	_, err = db.Stash(art)
+	if alreadyGot {
+		// force replacement!
+		art.ID = artID
+	}
+
+	artID, err = db.Stash(art)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s stash FAILED: %s\n", f, err)
 		return
 	}
-	fmt.Fprintf(os.Stdout, "%s : %s\n", f, art.Headline)
+	if alreadyGot {
+		fmt.Fprintf(os.Stdout, "%s : RESCRAPE %d '%s'\n", f, artID, art.Headline)
+	} else {
+		fmt.Fprintf(os.Stdout, "%s : %d '%s'\n", f, artID, art.Headline)
+	}
 }
 
 func findWarcFiles(start string) []string {
@@ -95,10 +109,11 @@ func findWarcFiles(start string) []string {
 }
 
 var opts struct {
-	databaseURL string
+	databaseURL  string
+	forceReplace bool
 }
 
-func openStore(connStr string) (store.Store, error) {
+func openStore(connStr string) (*store.Store, error) {
 	if connStr == "" {
 		connStr = os.Getenv("SCRAPEOMAT_DB")
 	}
@@ -107,7 +122,7 @@ func openStore(connStr string) (store.Store, error) {
 		return nil, fmt.Errorf("no database specified (use -db flag or set $SCRAPEOMAT_DB)")
 	}
 
-	db, err := store.NewPgStore(connStr)
+	db, err := store.NewStore(connStr)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +132,7 @@ func openStore(connStr string) (store.Store, error) {
 func main() {
 
 	flag.StringVar(&opts.databaseURL, "db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	flag.BoolVar(&opts.forceReplace, "f", false, "force replacement of articles already in db")
 	flag.Parse()
 
 	db, err := openStore(opts.databaseURL)

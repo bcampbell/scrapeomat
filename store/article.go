@@ -26,6 +26,7 @@ type Publication struct {
 }
 
 type Article struct {
+	ID           int
 	CanonicalURL string `json:"canonical_url,omitempty"`
 	// all known URLs for article (including canonical)
 	// TODO: first url should be considered "preferred" if no canonical?

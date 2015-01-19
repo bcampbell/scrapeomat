@@ -57,15 +57,15 @@ func (store *Store) Close() {
 	}
 }
 
-func (store *Store) Stash(art *Article) (string, error) {
+func (store *Store) Stash(art *Article) (int, error) {
 	tx, err := store.db.Begin()
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 	artID, err := store.stash2(tx, art)
 	if err != nil {
 		tx.Rollback()
-		return "", err
+		return 0, err
 	}
 	tx.Commit()
 	return artID, nil
@@ -93,30 +93,68 @@ func (store *Store) cvtTime(timestamp string) pq.NullTime {
 
 var datePat = regexp.MustCompile(`^\d\d\d\d-\d\d-\d\d`)
 
-func (store *Store) stash2(tx *sql.Tx, art *Article) (string, error) {
+func (store *Store) stash2(tx *sql.Tx, art *Article) (int, error) {
 
 	pubID, err := store.findOrCreatePublication(tx, &art.Publication)
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 
-	var artID int
-	err = tx.QueryRow(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-		art.CanonicalURL,
-		art.Headline,
-		art.Content,
-		store.cvtTime(art.Published),
-		store.cvtTime(art.Updated),
-		pubID,
-		art.Section).Scan(&artID)
-	if err != nil {
-		return "", err
+	artID := art.ID
+
+	if artID == 0 {
+		// it's a new article
+		err = tx.QueryRow(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+			art.CanonicalURL,
+			art.Headline,
+			art.Content,
+			store.cvtTime(art.Published),
+			store.cvtTime(art.Updated),
+			pubID,
+			art.Section).Scan(&artID)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		// updating an existing article
+
+		_, err = tx.Exec(`UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,added) = ($1,$2,$3,$4,$5,$6,$7,NOW()) WHERE id=$8`,
+			art.CanonicalURL,
+			art.Headline,
+			art.Content,
+			store.cvtTime(art.Published),
+			store.cvtTime(art.Updated),
+			pubID,
+			art.Section,
+			artID)
+		if err != nil {
+			return 0, err
+		}
+
+		// delete old urls (TODO: should merge?)
+		_, err = tx.Exec(`DELETE FROM article_url WHERE article_id=$1`, artID)
+		if err != nil {
+			return 0, err
+		}
+		// delete old authors
+		// TODO: either:
+		//         1) get rid of author_attr
+		//  or     2) make an attempt to resolve authors
+		//  and/or 3) do a periodic sweep to zap orphaned authors
+		_, err = tx.Exec(`DELETE FROM author WHERE id IN (SELECT author_id FROM author_attr WHERE article_id=$1)`, artID)
+		if err != nil {
+			return 0, err
+		}
+		_, err = tx.Exec(`DELETE FROM author_attr WHERE article_id=$1`, artID)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	for _, u := range art.URLs {
 		_, err = tx.Exec(`INSERT INTO article_url(article_id,url) VALUES($1,$2)`, artID, u)
 		if err != nil {
-			return "", fmt.Errorf("failed adding url %s: %s", u, err)
+			return 0, fmt.Errorf("failed adding url %s: %s", u, err)
 		}
 	}
 
@@ -128,19 +166,21 @@ func (store *Store) stash2(tx *sql.Tx, art *Article) (string, error) {
 			author.Email,
 			author.Twitter).Scan(&authorID)
 		if err != nil {
-			return "", err
+			return 0, err
 		}
 		_, err = tx.Exec(`INSERT INTO author_attr(author_id,article_id) VALUES ($1, $2)`,
 			authorID,
 			artID)
 		if err != nil {
-			return "", err
+			return 0, err
 		}
 	}
 
-	return "", nil
+	// all good.
+	return artID, nil
 }
 
+// returns 0,nil if not found
 func (store *Store) FindArticle(artURLs []string) (int, error) {
 
 	frags := make(fragList, 0, len(artURLs))
@@ -150,8 +190,10 @@ func (store *Store) FindArticle(artURLs []string) (int, error) {
 	foo, params := frags.Render(1, ",")
 	var artID int
 	s := `SELECT DISTINCT article_id FROM article_url WHERE url IN (` + foo + `)`
-	err := store.db.QueryRow(s, params).Scan(&artID)
-	if err != nil {
+	err := store.db.QueryRow(s, params...).Scan(&artID)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	} else if err != nil {
 		return 0, err
 	}
 	return artID, nil
@@ -314,12 +356,11 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 			default:
 			}
 
-			var id int
 			var art Article
 			var p = &art.Publication
 
 			var published, updated pq.NullTime
-			if err := artRows.Scan(&id, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &p.Code, &p.Name, &p.Domain); err != nil {
+			if err := artRows.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &p.Code, &p.Name, &p.Domain); err != nil {
 				c <- FetchedArt{nil, err}
 				return
 			}
@@ -331,14 +372,14 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 				art.Updated = updated.Time.Format(time.RFC3339)
 			}
 
-			urls, err := store.fetchURLs(id)
+			urls, err := store.fetchURLs(art.ID)
 			if err != nil {
 				c <- FetchedArt{nil, err}
 				return
 			}
 			art.URLs = urls
 
-			authors, err := store.fetchAuthors(id)
+			authors, err := store.fetchAuthors(art.ID)
 			if err != nil {
 				c <- FetchedArt{nil, err}
 				return
@@ -347,7 +388,7 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 
 			// TODO: keywords
 
-			//			fmt.Printf("send %d: %s\n", id, art.Headline)
+			//			fmt.Printf("send %d: %s\n", art.ID, art.Headline)
 			c <- FetchedArt{&art, nil}
 
 		}
