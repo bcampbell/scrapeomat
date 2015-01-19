@@ -141,6 +141,22 @@ func (store *Store) stash2(tx *sql.Tx, art *Article) (string, error) {
 	return "", nil
 }
 
+func (store *Store) FindArticle(artURLs []string) (int, error) {
+
+	frags := make(fragList, 0, len(artURLs))
+	for _, u := range artURLs {
+		frags.Add("?", u)
+	}
+	foo, params := frags.Render(1, ",")
+	var artID int
+	s := `SELECT DISTINCT article_id FROM article_url WHERE url IN (` + foo + `)`
+	err := store.db.QueryRow(s, params).Scan(&artID)
+	if err != nil {
+		return 0, err
+	}
+	return artID, nil
+}
+
 func (store *Store) WhichAreNew(artURLs []string) ([]string, error) {
 
 	stmt, err := store.db.Prepare(`SELECT article_id FROM article_url WHERE url=$1`)
@@ -226,61 +242,28 @@ func (store *Store) createPublication(tx *sql.Tx, pub *Publication) (int, error)
 	return pubID, nil
 }
 
-type frag struct {
-	fmt    string
-	params []interface{}
-}
-
-func (f frag) build(baseIdx int) (string, []interface{}) {
-	indices := make([]interface{}, len(f.params))
-	for i := 0; i < len(f.params); i++ {
-		indices[i] = baseIdx + i
-	}
-	return fmt.Sprintf(f.fmt, indices...), f.params
-}
-
-type fragList []frag
-
-func (l *fragList) Add(fmt string, params ...interface{}) {
-	*l = append(*l, frag{fmt, params})
-}
-func (frags *fragList) Render() (string, []interface{}) {
-
-	var idx int = 1
-	params := []interface{}{}
-	subStrs := []string{}
-	for _, f := range *frags {
-		s, p := f.build(idx)
-		subStrs = append(subStrs, s)
-		params = append(params, f.params...)
-		idx += len(p)
-	}
-
-	return strings.Join(subStrs, " AND "), params
-}
-
 func buildWhere(filt *Filter) *fragList {
 	//var idx int = 1
 	frags := &fragList{}
 
 	if !filt.PubFrom.IsZero() {
-		frags.Add("a.published>=$%d", filt.PubFrom)
+		frags.Add("a.published>=?", filt.PubFrom)
 	}
 	if !filt.PubTo.IsZero() {
-		frags.Add("a.published<$%d", filt.PubTo)
+		frags.Add("a.published<?", filt.PubTo)
 	}
 	if !filt.AddedFrom.IsZero() {
-		frags.Add("a.added>=$%d", filt.AddedFrom)
+		frags.Add("a.added>=?", filt.AddedFrom)
 	}
 	if !filt.AddedTo.IsZero() {
-		frags.Add("a.added<$%d", filt.AddedTo)
+		frags.Add("a.added<?", filt.AddedTo)
 	}
 
 	if len(filt.PubCodes) > 0 {
 		foo := []string{}
 		bar := []interface{}{}
 		for _, code := range filt.PubCodes {
-			foo = append(foo, "$%d")
+			foo = append(foo, "?")
 			bar = append(bar, code)
 		}
 		frags.Add("p.code IN ("+strings.Join(foo, ",")+")", bar...)
@@ -290,7 +273,7 @@ func buildWhere(filt *Filter) *fragList {
 }
 
 func (store *Store) FetchCount(filt *Filter) (int, error) {
-	whereClause, params := buildWhere(filt).Render()
+	whereClause, params := buildWhere(filt).Render(1, " AND ")
 	q := `SELECT COUNT(*)
            FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
            WHERE ` + whereClause
@@ -301,7 +284,7 @@ func (store *Store) FetchCount(filt *Filter) (int, error) {
 
 func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt {
 
-	whereClause, params := buildWhere(filt).Render()
+	whereClause, params := buildWhere(filt).Render(1, " AND ")
 	c := make(chan FetchedArt)
 	go func() {
 		defer close(c)
