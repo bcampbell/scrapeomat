@@ -4,6 +4,7 @@ package main
 
 import (
 	"code.google.com/p/cascadia"
+	"flag"
 	"fmt"
 	"github.com/bcampbell/arts/util"
 	"golang.org/x/net/html"
@@ -12,21 +13,40 @@ import (
 	"net/url"
 	"os"
 	"semprini/scrapeomat/paywall"
+	"time"
 )
 
-func main() {
-	/*
-		var fromDayFlag = flag.String("f", "from", "first day in range (yyyy-mm-dd)")
-		var toDayFlag = flag.String("t", "to", "last day in range (yyyy-mm-dd)")
-		flag.Parse()
-	*/
+var opts struct {
+	dayFrom, dayTo string
+}
 
-	//	err := DoTheSun()
-	//err := DoFT()
-	err := DoTheCourier()
+func main() {
+
+	flag.StringVar(&opts.dayFrom, "from", "", "first day in range (yyyy-mm-dd)")
+	flag.StringVar(&opts.dayTo, "to", "", "last day in range (yyyy-mm-dd)")
+	flag.Parse()
+
+	var err error
+
+	switch flag.Arg(0) {
+	case "dailystar":
+		err = DoDailyStar(opts.dayFrom, opts.dayTo)
+	default:
+		{
+			fmt.Fprintf(os.Stderr, "bad site\n")
+			os.Exit(1)
+		}
+	}
+	//err = DoTheSun()
+	//err = DoFT()
+	//err = DoTheCourier()
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+		os.Exit(1)
 	}
+
+	os.Exit(0)
 }
 
 // GetAttr retrieved the value of an attribute on a node.
@@ -217,4 +237,88 @@ func DoTheCourier() error {
 		}
 	}
 	return nil
+}
+
+const dayFmt = "2006-01-02"
+
+func genDateRange(dayFrom, dayTo string) ([]time.Time, error) {
+
+	var from, to time.Time
+	if dayFrom == "" {
+		return nil, fmt.Errorf("from day required")
+	}
+	from, err := time.Parse(dayFmt, dayFrom)
+	if err != nil {
+		return nil, err
+	}
+
+	if dayTo == "" {
+		now := time.Now()
+		to = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	} else {
+		to, err = time.Parse(dayFmt, dayTo)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if to.Before(from) {
+		return nil, fmt.Errorf("to day is before from")
+	}
+
+	out := []time.Time{}
+	end := to.AddDate(0, 0, 1)
+	for day := from; day.Before(end); day = day.AddDate(0, 0, 1) {
+		out = append(out, day)
+	}
+	return out, nil
+}
+
+// daily star has handy archive pages, one per day:
+// http://www.dailystar.co.uk/sitearchive/YYYY/M/D
+func DoDailyStar(dayFrom, dayTo string) error {
+	days, err := genDateRange(opts.dayFrom, opts.dayTo)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Transport: util.NewPoliteTripper(),
+	}
+	linkSel := cascadia.MustCompile(".sitemap li a")
+	for _, day := range days {
+		page := fmt.Sprintf("http://www.dailystar.co.uk/sitearchive/%d/%d/%d",
+			day.Year(), day.Month(), day.Day())
+		root, err := fetchAndParse(client, page)
+		if err != nil {
+			return fmt.Errorf("%s failed: %s\n", page, err)
+		}
+		links, err := grabLinks(root, linkSel, page)
+		if err != nil {
+			return fmt.Errorf("%s error: %s\n", page, err)
+		}
+		for _, l := range links {
+			fmt.Println(l)
+		}
+	}
+
+	return nil
+}
+
+func grabLinks(root *html.Node, linkSel cascadia.Selector, baseURL string) ([]string, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	out := []string{}
+	for _, a := range linkSel.MatchAll(root) {
+		href := GetAttr(a, "href")
+		absURL, err := u.Parse(href)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s BAD link: '%s'\n", baseURL, href)
+			continue
+		}
+		out = append(out, absURL.String())
+	}
+	return out, nil
 }
