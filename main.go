@@ -159,7 +159,11 @@ func main() {
 				scraper.infoLog.Printf("not using cookies")
 				client = politeClient
 			}
-			scraper.DoRunFromList(artURLs, db, client)
+			err = scraper.DoRunFromList(artURLs, db, client)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+				os.Exit(1)
+			}
 		}
 		return
 	}
