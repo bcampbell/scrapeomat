@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/html"
 	"net/http"
 	"net/url"
+	//	"os"
 	"regexp"
 	"strings"
 )
@@ -156,6 +157,24 @@ func (disc *Discoverer) Run(client *http.Client) (LinkSet, error) {
 			}
 		}
 		disc.Stats.FetchCount++
+
+		// debugging hack - dump out html we into files
+		/*
+			dumpFilename := fmt.Sprintf("dump%03d.html", disc.Stats.FetchCount)
+			dump, err := os.Create(dumpFilename)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "dump err: %s\n", err)
+			} else {
+				err = html.Render(dump, root)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "dump render err: %s\n", err)
+				} else {
+					fmt.Printf("%s => %s\n", pageURL.String(), dumpFilename)
+				}
+				dump.Close()
+			}
+		*/
+		// end debugging hack
 
 		navLinks, err := disc.findNavLinks(root)
 		if err != nil {
