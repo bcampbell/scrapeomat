@@ -24,6 +24,12 @@ type ScrapeStats struct {
 	StashCount int
 }
 
+// TODO: factor out a scraper interface, to handle both generic and custom scrapers
+// Name() string
+// Discover(c *http.Client) ([]string, error)
+// DoRun(db *store.Store, c *http.Client) error
+// DoRunFromList(arts []string, db *store.Store, c *http.Client) error
+
 type Scraper struct {
 	Name       string
 	Conf       *ScraperConf
