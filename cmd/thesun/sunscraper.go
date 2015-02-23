@@ -81,11 +81,22 @@ type SectionMessage struct {
 }
 
 func (scraper *SunScraper) Discover(client *http.Client) ([]string, error) {
+
 	baseURL := "http://www.thesun.co.uk"
 
 	queued := []string{}               // sections to visit
 	seen := map[string]struct{}{}      // sections visited
 	foundArts := map[string]struct{}{} // article links found
+
+	// cheesy hack - The Sun has got the wrong URL for their "sun says" section,
+	// so we do a separate check using their search page instead. sigh.
+	sunsays, err := scraper.sunsaysDiscover(client)
+	if err != nil {
+		return nil, err
+	}
+	for _, foo := range sunsays {
+		foundArts[foo] = struct{}{}
+	}
 
 	queued = append(queued, baseURL+"/sol/homepage/")
 	seen[baseURL+"/sol/homepage/"] = struct{}{}
@@ -187,28 +198,32 @@ func (scraper *SunScraper) fetchJSON(client *http.Client, htmlURL string) ([]byt
 	return ioutil.ReadAll(resp.Body)
 }
 
-// discover via search (seems flakey)
-// left in to possible handle backfills some time...
-func (scraper *SunScraper) OLDDiscover(client *http.Client) ([]string, error) {
+// cheesy hack - The Sun has got the wrong URL for their "sun says" section,
+// so we do a separate check using their search page instead. sigh.
+func (scraper *SunScraper) sunsaysDiscover(client *http.Client) ([]string, error) {
 
-	// cheesy-as-hell
-	// search for articles over last 7 days containing "the"
-	// most recent first, up to 1000
-	// TODO: step through all results using offset param
 	baseURL := "http://www.thesun.co.uk"
-	searchURL := baseURL + "/web/thesun/search/searchResults.do?querystring=the&filters=date_published_7days:[NOW/DAY-7DAY%20TO%20NOW]&offset=0&hits=1000&sortby=date&order=DESC&bestLinks=off"
+	//	searchURL := baseURL + "/web/thesun/search/searchResults.do?querystring=the&filters=date_published_7days:[NOW/DAY-7DAY%20TO%20NOW]&offset=0&hits=1000&sortby=date&order=DESC&bestLinks=off"
+	// TODO: step through all results using offset param
 
-	scraper.infoLog.Printf("fetch %s\n", searchURL)
+	params := url.Values{}
+	params.Set("bestLinks", "on")
+	params.Set("hits", "20")
+	params.Set("querystring", "the sun says")
+
+	searchURL := baseURL + "/web/thesun/search/searchResults.do?" + params.Encode()
+
+	scraper.infoLog.Printf("Looking for \"the say says\" articles using the search page\n")
 	req, err := http.NewRequest("GET", searchURL, nil)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -238,6 +253,7 @@ func (scraper *SunScraper) OLDDiscover(client *http.Client) ([]string, error) {
 		found = append(found, artURL)
 	}
 
+	scraper.infoLog.Printf("Found %d 'sun says' articles\n", len(found))
 	return found, nil
 }
 
