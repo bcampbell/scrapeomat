@@ -38,6 +38,12 @@ func NewStore(connStr string) (*Store, error) {
 		return nil, err
 	}
 
+	err = db.Ping()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	// our assumed location for publication dates, when no timezone given
 	// TODO: this is the wrong place for it. Scraper should handle this on a per-publication basis
 	loc, err := time.LoadLocation("Europe/London")

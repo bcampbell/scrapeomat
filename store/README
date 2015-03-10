@@ -1,8 +1,8 @@
-$ sudo -u postgres createuser --no-superuser --no-createrole --createdb scrapeomat
 To create database:
 
 $ sudo -u postgres createuser --no-superuser --no-createrole --createdb scrapeomat
 $ sudo -u postgres createdb -O scrapeomat -E utf8 scrapeomat
 $ sudo -u postgres psql -c "ALTER ROLE scrapeomat WITH PASSWORD 'SooperSecretPassword'"
 
+then load pg/schema.sql
 
