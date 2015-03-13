@@ -42,7 +42,6 @@ func main() {
 	defer db.Close()
 
 	// run server
-	//	fmt.Printf("start server: http://localhost:%d/all\n", opts.port)
 	err = server.Run(db, opts.port, opts.prefix)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)

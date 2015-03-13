@@ -54,6 +54,7 @@ func Run(db *store.Store, port int, prefix string) error {
 		browseHandler(&Context{db: db}, w, r)
 	})
 
+	fmt.Printf("Started at localhost:%d%s/\n", port, prefix)
 	return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }
 
