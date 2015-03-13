@@ -1,5 +1,10 @@
 package main
 
+// the scrapeomat.
+// Scrapes configured news sites, shoves the results into a database.
+// Also archives the raw html for articles as .warc files for later
+// rescraping.
+
 import (
 	"bufio"
 	"code.google.com/p/gcfg"
@@ -12,7 +17,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"semprini/scrapeomat/server"
 	"semprini/scrapeomat/store"
 	"strings"
 	"sync"
@@ -32,7 +36,6 @@ func main() {
 	var discoverFlag = flag.Bool("discover", false, "run discovery for target sites, output article links to stdout, then exit")
 	var inputListFlag = flag.String("i", "", "input file of URLs (runs scrapers then exit)")
 	var databaseURLFlag = flag.String("db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
-	var portFlag = flag.Int("port", -1, "Run api server on port (-1= don't run it)")
 	flag.Parse()
 
 	scrapers, err := buildScrapers()
@@ -187,18 +190,6 @@ func main() {
 			}
 			scraper.Start(db, client)
 		}()
-	}
-
-	if *portFlag > 0 {
-
-		// run server
-
-		fmt.Printf("start server: http://localhost:%d/all\n", *portFlag)
-		err := server.Run(db, *portFlag)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to start server on port %d: %s\n", *portFlag, err)
-			os.Exit(1)
-		}
 	}
 
 	wg.Wait()

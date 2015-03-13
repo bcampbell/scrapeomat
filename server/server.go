@@ -13,7 +13,7 @@ var tmpls struct {
 	browse *template.Template
 }
 
-func Run(db *store.Store, port int) error {
+func Run(db *store.Store, port int, prefix string) error {
 	var baseTmpl string = `
 <!DOCTYPE html>
 <html>
@@ -47,10 +47,10 @@ func Run(db *store.Store, port int) error {
 	t.Parse(browseTmpl)
 	tmpls.browse = t
 
-	http.HandleFunc("/all", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(prefix+"/api/slurp", func(w http.ResponseWriter, r *http.Request) {
 		slurpHandler(&Context{db: db}, w, r)
 	})
-	http.HandleFunc("/browse", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(prefix+"/browse", func(w http.ResponseWriter, r *http.Request) {
 		browseHandler(&Context{db: db}, w, r)
 	})
 
