@@ -19,7 +19,7 @@ var opts struct {
 
 func main() {
 	//	flag.IntVar(&opts.verbosity, "v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
-	flag.StringVar(&opts.dbURL, "db", "", "database connection string (eg postgres://user:password@localhost/scrapeomat)")
+	flag.StringVar(&opts.dbURL, "db", "", "database connection string (eg postgres://user:password@localhost/scrapeomat) or set $SCRAPEOMAT_DB")
 	flag.StringVar(&opts.prefix, "prefix", "", `url prefix (eg "/ukarticles") to allow multiple servers on same port`)
 	flag.IntVar(&opts.port, "port", 12345, "port to run server on")
 	flag.Parse()
