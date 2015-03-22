@@ -29,8 +29,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"semprini/scrapeomat/paywall"
 	"semprini/scrapeomat/store"
+	"strings"
 	"time"
 )
 
@@ -74,10 +76,30 @@ func (scraper *SunScraper) Login(client *http.Client) error {
 
 type SectionMessage struct {
 	ArticleTeasers []struct {
-		ArticleType string `json:"articleType"`
-		ArticleUrl  string `json:"articleUrl"`
-		SectionUrl  string `json:"sectionUrl"`
+		ArticleType      string `json:"articleType"`
+		ArticleUrl       string `json:"articleUrl"`
+		ArticleTimestamp int64  `json:"articleTimestamp"`
+		SectionUrl       string `json:"sectionUrl"`
 	} `json:"articleTeasers"`
+}
+
+// Sun has the problem of overwriting old Leaders with new ones at the same url.
+// So, for leader URLs, we'll fudge the url by inserting the publication date.
+func fudgeLeaderURL(u, dayStr string) string {
+	if strings.Contains(u, "/sun_says/") && strings.HasSuffix(u, ".html") {
+		u = u[:len(u)-5] + "-" + dayStr + ".html"
+	}
+	return u
+}
+
+var unFudgeLeaderPat = regexp.MustCompile(`(?i)-\d\d\d\d-\d\d-\d\d[.]html`)
+
+// remove any date that might have been inserted in the URL by fudgeLeaderURL()
+func unFudgeLeaderURL(u string) string {
+	if strings.Contains(u, "/sun_says/") && strings.HasSuffix(u, ".html") {
+		u = unFudgeLeaderPat.ReplaceAllString(u, ".html")
+	}
+	return u
 }
 
 func (scraper *SunScraper) Discover(client *http.Client) ([]string, error) {
@@ -133,7 +155,9 @@ func (scraper *SunScraper) Discover(client *http.Client) ([]string, error) {
 
 		// grab articles
 		for _, teaser := range results.ArticleTeasers {
-			foundArts[baseURL+teaser.ArticleUrl] = struct{}{}
+			day := time.Unix(teaser.ArticleTimestamp/1000, 0).UTC().Format("2006-01-02")
+			u := fudgeLeaderURL(baseURL+teaser.ArticleUrl, day)
+			foundArts[u] = struct{}{}
 		}
 		scraper.infoLog.Printf("%s: has %d articles (now got %d unique articles)\n", sectionURL, len(results.ArticleTeasers), len(foundArts))
 	}
@@ -152,7 +176,8 @@ func (scraper *SunScraper) Discover(client *http.Client) ([]string, error) {
 type SearchResultsMessage struct {
 	SearchResults struct {
 		Hits []struct {
-			ArticleURL string `json:"articleUrl"`
+			ArticleURL       string `json:"articleUrl"`
+			ArticleTimestamp int64  `json:"articleTimestamp"`
 		} `json:"hits"`
 	} `json:"searchResults"`
 }
@@ -249,7 +274,9 @@ func (scraper *SunScraper) sunsaysDiscover(client *http.Client) ([]string, error
 
 	found := make([]string, 0, len(results.SearchResults.Hits))
 	for _, hit := range results.SearchResults.Hits {
-		artURL := baseURL + hit.ArticleURL
+		day := time.Unix(hit.ArticleTimestamp/1000, 0).UTC().Format("2006-01-02")
+		artURL := fudgeLeaderURL(baseURL+hit.ArticleURL, day)
+
 		found = append(found, artURL)
 	}
 
@@ -289,7 +316,8 @@ type ArtMessage struct {
 func (scraper *SunScraper) ScrapeArt(c *http.Client, artURL string) (*store.Article, error) {
 	// FETCH
 
-	u, err := url.Parse(artURL)
+	// note - we grab the unfudged URL, even if we use the fudged version for everything else
+	u, err := url.Parse(unFudgeLeaderURL(artURL))
 	if err != nil {
 		return nil, err
 	}
@@ -335,8 +363,8 @@ func (scraper *SunScraper) ScrapeArt(c *http.Client, artURL string) (*store.Arti
 	//	fmt.Printf("%+v\n", parsed)
 
 	art := &store.Article{}
-	art.CanonicalURL = parsed.MetaInfo.CanonicalUrl
-	art.URLs = []string{parsed.MetaInfo.CanonicalUrl}
+	art.CanonicalURL = artURL // artURL is fudged, for leaders (otherwise we'd use parsed.MetaInfo.CanonicalUrl)
+	art.URLs = []string{art.CanonicalURL}
 	art.Headline = parsed.Headline
 
 	authors := byline.Parse(parsed.AuthorByline.Byline)
