@@ -42,6 +42,8 @@ type Article struct {
 	Publication Publication `json:"publication,omitempty"`
 	Keywords    []Keyword   `json:"keywords,omitempty"`
 	Section     string      `json:"section,omitempty"`
+	// space for extra, free-form data
+	Extra interface{} `json:"extra,omitempty"`
 }
 
 // copy an arts.Article into our struct

@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS article_url CASCADE;
+DROP TABLE IF EXISTS article_keyword CASCADE;
 DROP TABLE IF EXISTS author_attr CASCADE;
 DROP TABLE IF EXISTS article CASCADE;
 DROP TABLE IF EXISTS author CASCADE;
@@ -23,6 +24,7 @@ CREATE TABLE article (
     updated TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     publication_id INT NOT NULL REFERENCES publication (id),
     section TEXT NOT NULL DEFAULT ''
+    extra TEXT NOT NULL DEFAULT ''
     -- TODO: keywords
 );
 CREATE INDEX ON article(id);
@@ -52,4 +54,18 @@ CREATE TABLE article_url (
 CREATE INDEX ON article_url(id);
 CREATE INDEX ON article_url(article_id);
 CREATE INDEX ON article_url(url);
+
+
+CREATE TABLE article_keyword (
+    id SERIAL PRIMARY KEY,
+    article_id INT NOT NULL REFERENCES article (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX ON article_keyword(id);
+CREATE INDEX ON article_keyword(article_id);
+CREATE INDEX ON article_keyword(name);
+
+
+
 

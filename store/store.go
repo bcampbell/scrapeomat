@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/lib/pq"
 	"regexp"
@@ -108,23 +109,17 @@ func (store *Store) stash2(tx *sql.Tx, art *Article) (int, error) {
 
 	artID := art.ID
 
-	if artID == 0 {
-		// it's a new article
-		err = tx.QueryRow(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-			art.CanonicalURL,
-			art.Headline,
-			art.Content,
-			store.cvtTime(art.Published),
-			store.cvtTime(art.Updated),
-			pubID,
-			art.Section).Scan(&artID)
+	extra := []byte{}
+	if art.Extra != nil {
+		extra, err = json.Marshal(art.Extra)
 		if err != nil {
 			return 0, err
 		}
-	} else {
-		// updating an existing article
+	}
 
-		_, err = tx.Exec(`UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,added) = ($1,$2,$3,$4,$5,$6,$7,NOW()) WHERE id=$8`,
+	if artID == 0 {
+		// it's a new article
+		err = tx.QueryRow(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section,extra) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
 			art.CanonicalURL,
 			art.Headline,
 			art.Content,
@@ -132,6 +127,22 @@ func (store *Store) stash2(tx *sql.Tx, art *Article) (int, error) {
 			store.cvtTime(art.Updated),
 			pubID,
 			art.Section,
+			extra).Scan(&artID)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		// updating an existing article
+
+		_, err = tx.Exec(`UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,extra,added) = ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) WHERE id=$9`,
+			art.CanonicalURL,
+			art.Headline,
+			art.Content,
+			store.cvtTime(art.Published),
+			store.cvtTime(art.Updated),
+			pubID,
+			art.Section,
+			extra,
 			artID)
 		if err != nil {
 			return 0, err
@@ -142,6 +153,13 @@ func (store *Store) stash2(tx *sql.Tx, art *Article) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+
+		// delete old keywords (TODO: should merge?)
+		_, err = tx.Exec(`DELETE FROM article_keyword WHERE article_id=$1`, artID)
+		if err != nil {
+			return 0, err
+		}
+
 		// delete old authors
 		// TODO: either:
 		//         1) get rid of author_attr
@@ -161,6 +179,16 @@ func (store *Store) stash2(tx *sql.Tx, art *Article) (int, error) {
 		_, err = tx.Exec(`INSERT INTO article_url(article_id,url) VALUES($1,$2)`, artID, u)
 		if err != nil {
 			return 0, fmt.Errorf("failed adding url %s: %s", u, err)
+		}
+	}
+
+	for _, k := range art.Keywords {
+		_, err = tx.Exec(`INSERT INTO article_keyword(article_id,name,url) VALUES($1,$2,$3)`,
+			artID,
+			k.Name,
+			k.URL)
+		if err != nil {
+			return 0, fmt.Errorf("failed adding keyword %s (%s): %s", k.Name, k.URL, err)
 		}
 	}
 
@@ -337,7 +365,7 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 	go func() {
 		defer close(c)
 
-		q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,p.code,p.name,p.domain
+		q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
 	               WHERE ` + whereClause + ` ORDER BY published DESC`
 
@@ -366,7 +394,8 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 			var p = &art.Publication
 
 			var published, updated pq.NullTime
-			if err := artRows.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &p.Code, &p.Name, &p.Domain); err != nil {
+			var extra []byte
+			if err := artRows.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &extra, &p.Code, &p.Name, &p.Domain); err != nil {
 				c <- FetchedArt{nil, err}
 				return
 			}
@@ -385,12 +414,28 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 			}
 			art.URLs = urls
 
+			keywords, err := store.fetchKeywords(art.ID)
+			if err != nil {
+				c <- FetchedArt{nil, err}
+				return
+			}
+			art.Keywords = keywords
+
 			authors, err := store.fetchAuthors(art.ID)
 			if err != nil {
 				c <- FetchedArt{nil, err}
 				return
 			}
 			art.Authors = authors
+
+			// decode extra data
+			if len(extra) > 0 {
+				err = json.Unmarshal(extra, &art.Extra)
+				if err != nil {
+					c <- FetchedArt{nil, err}
+					return
+				}
+			}
 
 			// TODO: keywords
 
@@ -443,6 +488,29 @@ func (store *Store) fetchAuthors(artID int) ([]Author, error) {
 			return nil, err
 		}
 		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (store *Store) fetchKeywords(artID int) ([]Keyword, error) {
+	q := `SELECT name,url
+        FROM article_keyword
+        WHERE article_id=$1`
+	rows, err := store.db.Query(q, artID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Keyword{}
+	for rows.Next() {
+		var k Keyword
+		if err := rows.Scan(&k.Name, &k.URL); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
