@@ -24,6 +24,7 @@ type Keyword struct {
 	URL  string `json:"url,omitempty"`
 }
 
+// wire format for article data
 type Article struct {
 	//ID           int
 	CanonicalURL string `json:"canonical_url"`
