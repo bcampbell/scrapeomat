@@ -21,24 +21,36 @@ var opts struct {
 }
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "%s [ft|dailystar] [dayfrom] [dayto]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Grab older articles from various sites, dumping the urls out to stdout\n")
+		flag.PrintDefaults()
+	}
 
-	flag.StringVar(&opts.dayFrom, "from", "", "first day in range (yyyy-mm-dd)")
-	flag.StringVar(&opts.dayTo, "to", "", "last day in range (yyyy-mm-dd)")
 	flag.Parse()
 
 	var err error
+	if flag.NArg() < 3 {
+		fmt.Fprintf(os.Stderr, "ERROR: missing args\n")
+		flag.Usage()
+		os.Exit(1)
+	}
 
+	dayFrom := flag.Arg(1)
+	dayTo := flag.Arg(2)
 	switch flag.Arg(0) {
 	case "dailystar":
-		err = DoDailyStar(opts.dayFrom, opts.dayTo)
+		err = DoDailyStar(dayFrom, dayTo)
+	case "ft":
+		err = DoFT(dayFrom, dayTo)
 	default:
 		{
-			fmt.Fprintf(os.Stderr, "bad site\n")
+			fmt.Fprintf(os.Stderr, "%s not a handled site\n", flag.Arg(0))
 			os.Exit(1)
 		}
 	}
 	//err = DoTheSun()
-	//err = DoFT()
 	//err = DoTheCourier()
 
 	if err != nil {
@@ -138,7 +150,7 @@ func fetchAndParse(client *http.Client, u string) (*html.Node, error) {
 	return html.Parse(resp.Body)
 }
 
-func DoFT() error {
+func DoFT(dayFrom, dayTo string) error {
 	linkSel := cascadia.MustCompile(".results .result h3 a")
 
 	// next link doesn't show up here (but does in firefox).
@@ -156,7 +168,7 @@ func DoFT() error {
 		// rpp = results per page
 		// fa=facets?
 		// s=sort
-		u := "http://search.ft.com/search?q=&t=all&rpp=100&fa=people%2Corganisations%2Cregions%2Csections%2Ctopics%2Ccategory%2Cbrand&s=-initialPublishDateTime&f=initialPublishDateTime[2014-08-28T00%3A00%3A00%2C2014-09-18T23%3A59%3A59]&p=" + fmt.Sprintf("%d", page)
+		u := "http://search.ft.com/search?q=&t=all&rpp=100&fa=people%2Corganisations%2Cregions%2Csections%2Ctopics%2Ccategory%2Cbrand&s=-initialPublishDateTime&f=initialPublishDateTime[" + dayFrom + "T00%3A00%3A00%2C" + dayTo + "T23%3A59%3A59]&p=" + fmt.Sprintf("%d", page)
 		root, err := fetchAndParse(client, u)
 		if err != nil {
 			return err
