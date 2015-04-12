@@ -15,6 +15,14 @@ type FetchedArt struct {
 	Err error
 }
 
+type Logger interface {
+	Printf(format string, v ...interface{})
+}
+type nullLogger struct{}
+
+func (l nullLogger) Printf(format string, v ...interface{}) {
+}
+
 type Filter struct {
 	PubFrom   time.Time
 	PubTo     time.Time
@@ -27,8 +35,10 @@ type Filter struct {
 
 // Store stashes articles in a postgresql db
 type Store struct {
-	db  *sql.DB
-	loc *time.Location
+	db       *sql.DB
+	loc      *time.Location
+	ErrLog   Logger
+	DebugLog Logger
 }
 
 // eg "postgres://username@localhost/dbname"
@@ -52,7 +62,12 @@ func NewStore(connStr string) (*Store, error) {
 		return nil, err
 	}
 
-	store := Store{db: db, loc: loc}
+	store := Store{
+		db:       db,
+		loc:      loc,
+		ErrLog:   nullLogger{}, // TODO: should log to stderr by default?
+		DebugLog: nullLogger{},
+	}
 
 	return &store, nil
 }
@@ -376,6 +391,8 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 			q += fmt.Sprintf(" OFFSET %d", filt.Offset)
 		}
 
+		store.DebugLog.Printf("fetch: %s\n", q)
+		store.DebugLog.Printf("fetch params: %+v\n", params)
 		artRows, err := store.db.Query(q, params...)
 		if err != nil {
 			c <- FetchedArt{nil, err}
@@ -385,7 +402,7 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 		for artRows.Next() {
 			select {
 			case <-abort:
-				fmt.Printf("fetch aborted.\n")
+				store.DebugLog.Printf("fetch aborted.\n")
 				return
 			default:
 			}
