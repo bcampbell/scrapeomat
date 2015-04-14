@@ -23,7 +23,7 @@ var opts struct {
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "%s [ft|dailystar] [dayfrom] [dayto]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s [ft|dailystar|bbc] [dayfrom] [dayto]\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Grab older articles from various sites, dumping the urls out to stdout\n")
 		flag.PrintDefaults()
 	}
@@ -44,6 +44,8 @@ func main() {
 		err = DoDailyStar(dayFrom, dayTo)
 	case "ft":
 		err = DoFT(dayFrom, dayTo)
+	case "bbc":
+		err = DoBBCNews(dayFrom, dayTo)
 	default:
 		{
 			fmt.Fprintf(os.Stderr, "%s not a handled site\n", flag.Arg(0))
@@ -324,13 +326,98 @@ func grabLinks(root *html.Node, linkSel cascadia.Selector, baseURL string) ([]st
 
 	out := []string{}
 	for _, a := range linkSel.MatchAll(root) {
-		href := GetAttr(a, "href")
-		absURL, err := u.Parse(href)
+		link, err := href(a, u)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s BAD link: '%s'\n", baseURL, href)
+			fmt.Fprintf(os.Stderr, "%s BAD link: '%s'\n", baseURL, err)
 			continue
 		}
-		out = append(out, absURL.String())
+		out = append(out, link)
 	}
 	return out, nil
+}
+
+func href(anchor *html.Node, baseURL *url.URL) (string, error) {
+	h := GetAttr(anchor, "href")
+	absURL, err := baseURL.Parse(h)
+	if err != nil {
+		return "", fmt.Errorf("bad href (%s): %s", h, err)
+	}
+	return absURL.String(), nil
+}
+
+func DoBBCNews(dayFrom, dayTo string) error {
+	// BBC has a search facility, but doesn't seem to have an option to
+	// sort by date... so it's a matter of stepping through huge numbers of results
+	// in the hope that we pick up what we need. Sigh.
+
+	// TODO: could discard articles outside desired date range... but probably not
+	// worth the effort
+
+	/*
+		dFrom, err := time.Parse("2006-01-02", dayFrom)
+		if err != nil {
+			return err
+		}
+		dTo, err := time.Parse("2006-01-02", dayTo)
+		if err != nil {
+			return err
+		}
+		dTo.AddDate(0, 0, 1)
+		discardCnt := 0
+	*/
+	artSel := cascadia.MustCompile(`article`)
+	linkSel := cascadia.MustCompile(`h1 a`)
+	dateSel := cascadia.MustCompile(`time`)
+
+	const MAXPAGE = 1000
+	for pageNum := 1; pageNum <= MAXPAGE; pageNum++ {
+		// http://www.bbc.co.uk/search?q=the&sa_f=search-serp&filter=news
+		// http://www.bbc.co.uk/search/more?page=2&q=the&sa_f=search-serp&filter=news
+		page := `http://www.bbc.co.uk/search/more?page=2&q=the&sa_f=search-serp&filter=news`
+
+		baseURL, err := url.Parse(page)
+		if err != nil {
+			return err
+		}
+
+		client := &http.Client{Transport: util.NewPoliteTripper()}
+		root, err := fetchAndParse(client, page)
+		if err != nil {
+			return fmt.Errorf("%s failed: %s\n", page, err)
+		}
+
+		for _, art := range artSel.MatchAll(root) {
+
+			d := dateSel.MatchFirst(art)
+			a := linkSel.MatchFirst(art)
+
+			if d == nil {
+				return fmt.Errorf("%s: missing date\n", page)
+			}
+			if a == nil {
+				return fmt.Errorf("%s: missing link\n", page)
+			}
+
+			artURL, err := href(a, baseURL)
+			if err != nil {
+				return fmt.Errorf("%s error: %s\n", page, err)
+			}
+
+			/*
+				// TODO: date range filtering here...
+				dt, err := time.Parse(time.RFC3339, GetAttr(d, "datetime"))
+				if err != nil {
+					return err
+				}
+
+				//if (dt.Equal(dFrom)||dt.After(dFrom)) && dt.Before(dTo) {...}
+			*/
+
+			fmt.Println(artURL)
+		}
+		//html.Render(os.Stdout, root)
+		//fmt.Printf("\n")
+
+	}
+	return nil
 }
