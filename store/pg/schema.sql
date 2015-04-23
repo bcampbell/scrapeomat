@@ -23,9 +23,8 @@ CREATE TABLE article (
     published TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     updated TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     publication_id INT NOT NULL REFERENCES publication (id),
-    section TEXT NOT NULL DEFAULT ''
+    section TEXT NOT NULL DEFAULT '',
     extra TEXT NOT NULL DEFAULT ''
-    -- TODO: keywords
 );
 CREATE INDEX ON article(id);
 
