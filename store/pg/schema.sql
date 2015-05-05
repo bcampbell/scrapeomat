@@ -27,6 +27,7 @@ CREATE TABLE article (
     extra TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX ON article(id);
+CREATE INDEX ON article(published);
 
 CREATE TABLE author (
     id SERIAL PRIMARY KEY,
