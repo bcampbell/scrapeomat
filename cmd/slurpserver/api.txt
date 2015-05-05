@@ -1,0 +1,105 @@
+Scrapeomat API docs
+===================
+
+GET http://foo.scumways.com/ukarts/api//api/slurp
+
+Fetches full articles from the scrapeomat store.
+
+IMPORTANT NOTE:
+
+Currently there's no fancy mechanism for paging through results.
+Giving the volume of data being shifted, you need to be careful
+not to request silly amounts at a time.
+We've been slurping down a day at a time, and that seems to work
+pretty well, so that's what I'd recommend doing for now - just
+step through the date range you want, day by day.
+From memory, I think it works out to about 1.5MB or so of result
+per request.
+
+
+PARAMETERS:
+
+pubfrom
+pubto
+
+  Only articles with publication dates within this range will be returned.
+  More specifically, the range is:   pubfrom >= published < pubto
+
+  These can be days like "2006-03-23", or full RFC3339 dates, with the
+  timezone offset and all (eg: "2006-01-02T15:04:05+07:00"). 
+
+  For the day-only form, the day is taken as UTC. So, because London is
+  currently using BST, the articles returned will be skewed by one hour -
+  you'll be missing an hour from one day, but it'll include an hour from
+  another day instead.
+
+  Don't forget to url-escape the params (the plus sign in the timezone
+  caused me a little head-scratching ;-)
+
+pub
+  filter by publication.
+
+  By default, all publications are included in the results, but if one or
+  more "pub" params are included, the results will be narrowed down.
+  The values for "pub" are the publication codes "bbc", "dailymail",
+  "guardian" etc etc...
+  (I can get you a list if you need them, or you can just pick them out
+  of the results yourself :-)
+
+
+EXAMPLE:
+  to fetch all the articles published on May 3rd, London time (+01:00
+  currently):
+
+  http://foo.scumways.com/ukarts/api/slurp?pubfrom=2015-05-03T00%3A00%3A00%2B01%3A00&pubto=2015-05-04T00%3A00%3A00%2B01%3A00
+
+
+
+
+RETURNS:
+
+Upon error, a non-200 HTTP code will be returned (eg "400 Bad Request"
+if the parameters are bad).
+
+Upon success, the articles are returned as a stream of json
+objects:
+
+  {"article": { ... article 1 data ... }}
+  {"article": { ... article 2 data ... }}
+     ...
+  {"article": { ... article N data ... }}
+
+If an error occurs after the data starts flowing, an error object will be
+returned with some description, eg:
+
+  {"error": "too many fish"}
+
+I plan to define some other objects in addtion to "article" and "error"
+(eg progress updates), so if you just ignore anything unknown you should
+be fine.
+
+The article data should be reasonably self-explanatory.
+The "content" field is the article text, in somewhat-sanitised HTML.
+The "urls" field contains a list of known URLs (including canonical URL,
+if known).
+
+
+
+FUTURE PLANS:
+
+I'll be adding a paging mechanism, probably based on internal IDs.
+So you'll be able to say "give me all the articles since ID 12345".
+(I'll need this to feed Journalisted, for example)
+
+I'll also be adding some sort of simple token-based auth.
+I'll give out tokens, and clients will have to pass them in
+as params or cookies or whatever the prevailing wisdom on stackoverflow
+recommends ;-)
+
+Some day there'll be some other API endpoints for interogating publication
+codes, article counts and whatever other stats or diagnostic stuff would be
+useful. (For now I just ssh in to the server and use raw SQL, but I realise
+that's not a widely-applicable solution ;-).
+
+
+
