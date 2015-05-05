@@ -24,13 +24,16 @@ func (l nullLogger) Printf(format string, v ...interface{}) {
 }
 
 type Filter struct {
+	// date ranges are [from,to)
 	PubFrom   time.Time
 	PubTo     time.Time
 	AddedFrom time.Time
 	AddedTo   time.Time
 	PubCodes  []string
-	Offset    int
-	Limit     int
+	Cursor    int
+	// dump these and use a cursor id instead
+	Offset int
+	Limit  int
 }
 
 // Store stashes articles in a postgresql db

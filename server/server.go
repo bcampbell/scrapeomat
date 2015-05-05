@@ -98,22 +98,67 @@ type Msg struct {
 	*/
 }
 
-func getFilter(r *http.Request) (*store.Filter, error) {
-	const dateFmt = "2006-01-02"
-	from, err := time.Parse(dateFmt, r.FormValue("from"))
-	if err != nil {
-		return nil, fmt.Errorf("bad/missing 'from' param")
-	}
-	to, err := time.Parse(dateFmt, r.FormValue("to"))
-	if err != nil {
-		return nil, fmt.Errorf("bad/missing 'to' param")
-	}
-	to = to.AddDate(0, 0, 1) // add one day
+func parseTime(in string) (time.Time, error) {
 
-	filt := &store.Filter{PubFrom: from, PubTo: to}
+	t, err = time.ParseInLocation(time.RFC3339, in, time.UTC)
+	if err == nil {
+		return t, nil
+	}
+
+	// short form - assumes you want utc days rather than local days...
+	const dateOnlyFmt = "2006-01-02"
+	from, err := time.ParseInLocation(dateOnlyFmt, in, time.UTC)
+	if err != nil {
+		return nil, fmt.Errorf("invalid date/time format")
+	}
+
+	return t, nil
+
+}
+
+func getFilter(r *http.Request) (*store.Filter, error) {
+	filt := &store.Filter{}
+
+	// deprecated!
+	if r.FormValue("from") != "" {
+		t, err := parseTime(r.FormValue("from"))
+		if err != nil {
+			return nil, fmt.Errorf("bad 'from' param")
+		}
+
+		filt.PubFrom = t
+	}
+
+	// deprecated!
+	if r.FormValue("to") != "" {
+		t, err := parseTime(r.FormValue("to"))
+		if err != nil {
+			return nil, fmt.Errorf("bad 'to' param")
+		}
+		t = t.AddDate(0, 0, 1) // add one day
+		filt.PubTo = t
+	}
+
+	if r.FormValue("pubfrom") != "" {
+		t, err := parseTime(r.FormValue("pubfrom"))
+		if err != nil {
+			return nil, fmt.Errorf("bad 'pubfrom' param")
+		}
+
+		filt.PubFrom = t
+	}
+	if r.FormValue("pubto") != "" {
+		t, err := parseTime(r.FormValue("pubto"))
+		if err != nil {
+			return nil, fmt.Errorf("bad 'pubto' param")
+		}
+
+		filt.PubTo = t
+	}
 	return filt, nil
 }
 
+// implement the main article slurp API
 func (srv *SlurpServer) slurpHandler(ctx *Context, w http.ResponseWriter, r *http.Request) {
 
 	filt, err := getFilter(r)
