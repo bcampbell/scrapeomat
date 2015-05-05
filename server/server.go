@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"semprini/scrapeomat/store"
+	"strconv"
 	"time"
 )
 
@@ -100,16 +101,16 @@ type Msg struct {
 
 func parseTime(in string) (time.Time, error) {
 
-	t, err = time.ParseInLocation(time.RFC3339, in, time.UTC)
+	t, err := time.ParseInLocation(time.RFC3339, in, time.UTC)
 	if err == nil {
 		return t, nil
 	}
 
 	// short form - assumes you want utc days rather than local days...
 	const dateOnlyFmt = "2006-01-02"
-	from, err := time.ParseInLocation(dateOnlyFmt, in, time.UTC)
+	t, err = time.ParseInLocation(dateOnlyFmt, in, time.UTC)
 	if err != nil {
-		return nil, fmt.Errorf("invalid date/time format")
+		return time.Time{}, fmt.Errorf("invalid date/time format")
 	}
 
 	return t, nil
@@ -155,6 +156,22 @@ func getFilter(r *http.Request) (*store.Filter, error) {
 
 		filt.PubTo = t
 	}
+
+	if r.FormValue("cursor") != "" {
+		cursor, err := strconv.Atoi(r.FormValue("cursor"))
+		if err != nil {
+			return nil, fmt.Errorf("bad 'cursor' param")
+		}
+		if cursor > 0 {
+			filt.Cursor = cursor
+		}
+	}
+
+	// publication codes?
+	if pubs, got := r.Form["pub"]; got {
+		filt.PubCodes = pubs
+	}
+
 	return filt, nil
 }
 

@@ -352,6 +352,9 @@ func buildWhere(filt *Filter) *fragList {
 	if !filt.AddedTo.IsZero() {
 		frags.Add("a.added<?", filt.AddedTo)
 	}
+	if filt.Cursor > 0 {
+		frags.Add("a.id>?", filt.Cursor)
+	}
 
 	if len(filt.PubCodes) > 0 {
 		foo := []string{}
