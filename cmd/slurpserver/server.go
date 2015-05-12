@@ -186,51 +186,63 @@ func (srv *SlurpServer) slurpHandler(ctx *Context, w http.ResponseWriter, r *htt
 
 	//	srv.InfoLog.Printf("%+v\n", filt)
 
+	/*
+		totalArts, err := srv.db.FetchCount(filt)
+		if err != nil {
+			// TODO: should send error via json
+			http.Error(w, fmt.Sprintf("DB error: %s", err), 500)
+			return
+		}
+		srv.InfoLog.Printf("%d articles to send\n", totalArts)
+	*/
+
+	err, artCnt, byteCnt := srv.performSlurp(w, filt)
+	status := "OK"
+	if err != nil {
+		status = fmt.Sprintf("FAIL (%s)", err)
+	}
+
+	srv.InfoLog.Printf("%s %s %d arts %d bytes %s\n", r.RemoteAddr, status, artCnt, byteCnt, filt.Describe())
+}
+
+func (srv *SlurpServer) performSlurp(w http.ResponseWriter, filt *store.Filter) (error, int, int) {
+
 	abort := make(chan struct{})
 	defer close(abort)
 
-	totalArts, err := srv.db.FetchCount(filt)
-	if err != nil {
-		// TODO: should send error via json
-		http.Error(w, fmt.Sprintf("DB error: %s", err), 500)
-		return
-	}
-	srv.InfoLog.Printf("%d articles to send\n", totalArts)
-
-	sent := 0
-
+	artCnt := 0
+	byteCnt := 0
 	c := srv.db.Fetch(abort, filt)
 	for fetched := range c {
 		msg := Msg{}
 		if fetched.Err == nil {
 			msg.Article = fetched.Art
 		} else {
+			// uhoh - some sort of database error... send it on to the client
 			msg.Error = fmt.Sprintf("fetch error: %s\n", fetched.Err)
-			srv.ErrLog.Printf(msg.Error)
 		}
 		outBuf, err := json.Marshal(msg)
 		if err != nil {
-			srv.ErrLog.Printf("json encoding error: %s\n", err)
 			abort <- struct{}{}
-			return
+			return fmt.Errorf("json encoding error: %s\n", err), artCnt, byteCnt
 		}
 		_, err = w.Write(outBuf)
 		if err != nil {
-			srv.ErrLog.Printf("write error: %s\n", err)
 			abort <- struct{}{}
-			return
+			return fmt.Errorf("write error: %s\n", err), artCnt, byteCnt
 		}
+		byteCnt += len(outBuf)
 
 		if fetched.Err == nil {
-			sent++
-			//	if (sent % 10) == 0 {
-			//		fmt.Printf("Sent %d/%d\n", sent, totalArts)
-			//	}
+			artCnt++
 		} else {
-			return
+			// there was a database error, so that's all.
+			// we've sent the error to the client, now finish.
+			return fmt.Errorf("fetch error: %s\n", fetched.Err), artCnt, byteCnt
 		}
 	}
 
+	return nil, artCnt, byteCnt
 }
 
 func (srv *SlurpServer) browseHandler(ctx *Context, w http.ResponseWriter, r *http.Request) {

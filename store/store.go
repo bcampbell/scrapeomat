@@ -36,6 +36,38 @@ type Filter struct {
 	Limit  int
 }
 
+// Describe returns a concise description of the filter for logging/debugging/whatever
+func (filt *Filter) Describe() string {
+	s := "[ "
+
+	if !filt.PubFrom.IsZero() && !filt.PubTo.IsZero() {
+		s += fmt.Sprintf("pub %s..%s ", filt.PubFrom.Format(time.RFC3339), filt.PubTo.Format(time.RFC3339))
+	} else if !filt.PubFrom.IsZero() {
+		s += fmt.Sprintf("pub %s.. ", filt.PubFrom.Format(time.RFC3339))
+	} else if !filt.PubTo.IsZero() {
+		s += fmt.Sprintf("pub ..%s ", filt.PubTo.Format(time.RFC3339))
+	}
+
+	if !filt.AddedFrom.IsZero() && !filt.AddedTo.IsZero() {
+		s += fmt.Sprintf("added %s..%s ", filt.AddedFrom.Format(time.RFC3339), filt.AddedTo.Format(time.RFC3339))
+	} else if !filt.AddedFrom.IsZero() {
+		s += fmt.Sprintf("added %s.. ", filt.AddedFrom.Format(time.RFC3339))
+	} else if !filt.AddedTo.IsZero() {
+		s += fmt.Sprintf("added ..%s ", filt.AddedTo.Format(time.RFC3339))
+	}
+
+	if len(filt.PubCodes) > 0 {
+		s += strings.Join(filt.PubCodes, "|") + " "
+	}
+
+	if filt.Cursor > 0 {
+		s += fmt.Sprintf("cur %d ", filt.Cursor)
+	}
+
+	s += "]"
+	return s
+}
+
 // Store stashes articles in a postgresql db
 type Store struct {
 	db       *sql.DB
