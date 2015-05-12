@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"semprini/scrapeomat/server"
 	"semprini/scrapeomat/store"
 )
 
@@ -16,11 +15,6 @@ var opts struct {
 	dbURL     string
 	port      int
 	prefix    string
-}
-
-type nullLogger struct{}
-
-func (l nullLogger) Printf(format string, v ...interface{}) {
 }
 
 func main() {
@@ -32,7 +26,7 @@ func main() {
 	flag.Parse()
 
 	errLog := log.New(os.Stderr, "ERR: ", log.LstdFlags)
-	var infoLog server.Logger
+	var infoLog Logger
 	if opts.verbosity > 0 {
 		infoLog = log.New(os.Stderr, "INF: ", log.LstdFlags)
 	} else {
@@ -62,7 +56,7 @@ func main() {
 	}
 
 	// run server
-	srv, err := server.New(db, opts.port, opts.prefix, infoLog, errLog)
+	srv, err := NewServer(db, opts.port, opts.prefix, infoLog, errLog)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)

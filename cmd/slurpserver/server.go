@@ -1,4 +1,4 @@
-package server
+package main
 
 import (
 	"encoding/json"
@@ -32,7 +32,7 @@ type SlurpServer struct {
 	}
 }
 
-func New(db *store.Store, port int, prefix string, infoLog Logger, errLog Logger) (*SlurpServer, error) {
+func NewServer(db *store.Store, port int, prefix string, infoLog Logger, errLog Logger) (*SlurpServer, error) {
 	srv := &SlurpServer{db: db, Port: port, Prefix: prefix, InfoLog: infoLog, ErrLog: errLog}
 
 	var baseTmpl string = `
