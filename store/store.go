@@ -30,10 +30,8 @@ type Filter struct {
 	AddedFrom time.Time
 	AddedTo   time.Time
 	PubCodes  []string
-	Cursor    int
-	// dump these and use a cursor id instead
-	Offset int
-	Limit  int
+	SinceID   int
+	Count     int
 }
 
 // Describe returns a concise description of the filter for logging/debugging/whatever
@@ -60,8 +58,11 @@ func (filt *Filter) Describe() string {
 		s += strings.Join(filt.PubCodes, "|") + " "
 	}
 
-	if filt.Cursor > 0 {
-		s += fmt.Sprintf("cur %d ", filt.Cursor)
+	if filt.Count > 0 {
+		s += fmt.Sprintf("cnt %d ", filt.Count)
+	}
+	if filt.SinceID > 0 {
+		s += fmt.Sprintf("since %d ", filt.SinceID)
 	}
 
 	s += "]"
@@ -384,8 +385,8 @@ func buildWhere(filt *Filter) *fragList {
 	if !filt.AddedTo.IsZero() {
 		frags.Add("a.added<?", filt.AddedTo)
 	}
-	if filt.Cursor > 0 {
-		frags.Add("a.id>?", filt.Cursor)
+	if filt.SinceID > 0 {
+		frags.Add("a.id>?", filt.SinceID)
 	}
 
 	if len(filt.PubCodes) > 0 {
@@ -411,22 +412,25 @@ func (store *Store) FetchCount(filt *Filter) (int, error) {
 	return cnt, err
 }
 
-func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt {
+func (store *Store) Fetch(filt *Filter) (<-chan FetchedArt, chan<- struct{}) {
 
 	whereClause, params := buildWhere(filt).Render(1, " AND ")
+	if whereClause != "" {
+		whereClause = "WHERE " + whereClause
+	}
+
 	c := make(chan FetchedArt)
+	abort := make(chan struct{})
 	go func() {
 		defer close(c)
+		defer close(abort)
 
 		q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
-	               WHERE ` + whereClause + ` ORDER BY published DESC`
+	               ` + whereClause + ` ORDER BY id`
 
-		if filt.Limit > 0 {
-			q += fmt.Sprintf(" LIMIT %d", filt.Limit)
-		}
-		if filt.Offset > 0 {
-			q += fmt.Sprintf(" OFFSET %d", filt.Offset)
+		if filt.Count > 0 {
+			q += fmt.Sprintf(" LIMIT %d", filt.Count)
 		}
 
 		store.DebugLog.Printf("fetch: %s\n", q)
@@ -504,7 +508,7 @@ func (store *Store) Fetch(abort <-chan struct{}, filt *Filter) <-chan FetchedArt
 		}
 
 	}()
-	return c
+	return c, abort
 }
 
 func (store *Store) fetchURLs(artID int) ([]string, error) {

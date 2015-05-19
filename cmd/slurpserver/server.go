@@ -157,14 +157,26 @@ func getFilter(r *http.Request) (*store.Filter, error) {
 		filt.PubTo = t
 	}
 
-	if r.FormValue("cursor") != "" {
-		cursor, err := strconv.Atoi(r.FormValue("cursor"))
+	if r.FormValue("since_id") != "" {
+		sinceID, err := strconv.Atoi(r.FormValue("since_id"))
 		if err != nil {
-			return nil, fmt.Errorf("bad 'cursor' param")
+			return nil, fmt.Errorf("bad 'since_id' param")
 		}
-		if cursor > 0 {
-			filt.Cursor = cursor
+		if sinceID > 0 {
+			filt.SinceID = sinceID
 		}
+	}
+
+	if r.FormValue("count") != "" {
+		cnt, err := strconv.Atoi(r.FormValue("count"))
+		if err != nil {
+			return nil, fmt.Errorf("bad 'count' param")
+		}
+		filt.Count = cnt
+	} else {
+		// ludicrous limit to handle tweets
+		// TODO: reduce once all clients being sensible.
+		filt.Count = 300000
 	}
 
 	// publication codes?
@@ -205,40 +217,51 @@ func (srv *SlurpServer) slurpHandler(ctx *Context, w http.ResponseWriter, r *htt
 	srv.InfoLog.Printf("%s %s %d arts %d bytes %s\n", r.RemoteAddr, status, artCnt, byteCnt, filt.Describe())
 }
 
-func (srv *SlurpServer) performSlurp(w http.ResponseWriter, filt *store.Filter) (error, int, int) {
+// helper fn
+func writeMsg(w http.ResponseWriter, msg *Msg) (int, error) {
+	outBuf, err := json.Marshal(msg)
+	if err != nil {
+		return 0, fmt.Errorf("json encoding error: %s\n", err)
+	}
+	n, err := w.Write(outBuf)
+	if err != nil {
+		return n, fmt.Errorf("write error: %s\n", err)
+	}
 
-	abort := make(chan struct{})
-	defer close(abort)
+	return n, nil
+}
+
+func (srv *SlurpServer) performSlurp(w http.ResponseWriter, filt *store.Filter) (error, int, int) {
 
 	artCnt := 0
 	byteCnt := 0
-	c := srv.db.Fetch(abort, filt)
+	c, abort := srv.db.Fetch(filt)
+	maxID := 0
 	for fetched := range c {
-		msg := Msg{}
-		if fetched.Err == nil {
-			msg.Article = fetched.Art
-		} else {
-			// uhoh - some sort of database error... send it on to the client
-			msg.Error = fmt.Sprintf("fetch error: %s\n", fetched.Err)
-		}
-		outBuf, err := json.Marshal(msg)
-		if err != nil {
-			abort <- struct{}{}
-			return fmt.Errorf("json encoding error: %s\n", err), artCnt, byteCnt
-		}
-		_, err = w.Write(outBuf)
-		if err != nil {
-			abort <- struct{}{}
-			return fmt.Errorf("write error: %s\n", err), artCnt, byteCnt
-		}
-		byteCnt += len(outBuf)
-
-		if fetched.Err == nil {
+		if fetched.Art != nil {
+			msg := Msg{Article: fetched.Art}
+			n, err := writeMsg(w, &msg)
+			if err != nil {
+				abort <- struct{}{}
+				return err, artCnt, byteCnt
+			}
+			byteCnt += n
 			artCnt++
-		} else {
-			// there was a database error, so that's all.
-			// we've sent the error to the client, now finish.
-			return fmt.Errorf("fetch error: %s\n", fetched.Err), artCnt, byteCnt
+			if fetched.Art.ID > maxID {
+				maxID = fetched.Art.ID
+			}
+		}
+
+		if fetched.Err != nil {
+			// uhoh - some sort of database error... log and send it on to the client
+			msg := Msg{Error: fmt.Sprintf("fetch error: %s\n", fetched.Err)}
+			srv.ErrLog.Printf("%s\n", msg.Error)
+			n, err := writeMsg(w, &msg)
+			if err != nil {
+				abort <- struct{}{}
+				return err, artCnt, byteCnt
+			}
+			byteCnt += n
 		}
 	}
 
@@ -252,10 +275,7 @@ func (srv *SlurpServer) browseHandler(ctx *Context, w http.ResponseWriter, r *ht
 		return
 	}
 
-	abort := make(chan struct{})
-	defer close(abort)
-
-	filt.Limit = 100
+	filt.Count = 100
 
 	totalArts, err := srv.db.FetchCount(filt)
 	if err != nil {
@@ -265,7 +285,7 @@ func (srv *SlurpServer) browseHandler(ctx *Context, w http.ResponseWriter, r *ht
 	}
 	srv.InfoLog.Printf("%d articles to send\n", totalArts)
 
-	c := srv.db.Fetch(abort, filt)
+	c, _ := srv.db.Fetch(filt)
 	arts := make([]*store.Article, 0)
 	for fetched := range c {
 		if fetched.Err != nil {
