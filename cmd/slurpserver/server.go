@@ -76,6 +76,9 @@ func (srv *SlurpServer) Run() error {
 	http.HandleFunc(srv.Prefix+"/api/slurp", func(w http.ResponseWriter, r *http.Request) {
 		srv.slurpHandler(&Context{}, w, r)
 	})
+	http.HandleFunc(srv.Prefix+"/api/count", func(w http.ResponseWriter, r *http.Request) {
+		srv.countHandler(&Context{}, w, r)
+	})
 	http.HandleFunc(srv.Prefix+"/browse", func(w http.ResponseWriter, r *http.Request) {
 		srv.browseHandler(&Context{}, w, r)
 	})

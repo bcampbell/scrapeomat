@@ -404,9 +404,12 @@ func buildWhere(filt *Filter) *fragList {
 
 func (store *Store) FetchCount(filt *Filter) (int, error) {
 	whereClause, params := buildWhere(filt).Render(1, " AND ")
+	if whereClause != "" {
+		whereClause = "WHERE " + whereClause
+	}
 	q := `SELECT COUNT(*)
            FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
-           WHERE ` + whereClause
+           ` + whereClause
 	var cnt int
 	err := store.db.QueryRow(q, params...).Scan(&cnt)
 	return cnt, err
