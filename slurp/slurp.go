@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
+	"time"
 )
 
 // Slurper is a client for talking to a slurp server
@@ -25,16 +28,46 @@ type Msg struct {
 	// TODO: include info/progress report messages
 }
 
+type Filter struct {
+	// date ranges are [from,to)
+	PubFrom   time.Time
+	PubTo     time.Time
+	AddedFrom time.Time
+	AddedTo   time.Time
+	PubCodes  []string
+	SinceID   int
+	Count     int
+}
+
 // Slurp downloads a set of articles from the server
 // returns a channel which streams out messages.
 // errors are returned via Msg. In the case of network errors,
 // Slurp may synthesise fake Msgs containing the error message.
-func (s *Slurper) Slurp(dayFrom, dayTo string) chan Msg {
+func (s *Slurper) Slurp(filt *Filter) chan Msg {
 	out := make(chan Msg)
+
+	params := url.Values{}
+
+	if !filt.PubFrom.IsZero() {
+		params.Set("pubfrom", filt.PubFrom.Format(time.RFC3339))
+	}
+	if !filt.PubTo.IsZero() {
+		params.Set("pubto", filt.PubTo.Format(time.RFC3339))
+	}
+	for _, pubCode := range filt.PubCodes {
+		params.Add("pub", pubCode)
+	}
+
+	if filt.SinceID > 0 {
+		params.Set("since_id", strconv.Itoa(filt.SinceID))
+	}
+	if filt.Count > 0 {
+		params.Set("count", strconv.Itoa(filt.Count))
+	}
 
 	go func() {
 		defer close(out)
-		u := fmt.Sprintf("%s/api/slurp?from=%s&to=%s", s.Location, dayFrom, dayTo)
+		u := s.Location + "/api/slurp?" + params.Encode()
 
 		// TODO: request (and handle) gzip compression!
 

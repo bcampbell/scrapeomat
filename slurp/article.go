@@ -26,7 +26,7 @@ type Keyword struct {
 
 // wire format for article data
 type Article struct {
-	//ID           int
+	ID           int    `json:"id,omitempty"`
 	CanonicalURL string `json:"canonical_url"`
 
 	// all known URLs for article (including canonical)

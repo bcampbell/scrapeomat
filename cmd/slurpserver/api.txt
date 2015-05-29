@@ -47,6 +47,15 @@ pub
   of the results yourself :-)
 
 
+since_id
+  Only return articles with an internal ID larger than this.
+
+count
+  limit the returned set of articles to this many at most.
+  There'll be some internal limit, which will probably end
+  up at about 2000 or so.
+
+
 EXAMPLE:
   to fetch all the articles published on May 3rd, London time (+01:00
   currently):
