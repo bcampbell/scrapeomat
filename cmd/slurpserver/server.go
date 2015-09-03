@@ -177,10 +177,10 @@ func getFilter(r *http.Request) (*store.Filter, error) {
 		}
 		filt.Count = cnt
 	} else {
-		// ludicrous limit to handle tweets
-		// TODO: reduce once all clients being sensible.
-		filt.Count = 300000
+		// default limit when none given
+		filt.Count = 2000
 	}
+	// TODO: enforce a max count value!
 
 	// publication codes?
 	if pubs, got := r.Form["pub"]; got {
