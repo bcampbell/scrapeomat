@@ -91,6 +91,7 @@ func ArchiveResponse(warcDir string, resp *http.Response, srcURL string, timeSta
 	if err != nil {
 		return err
 	}
+	defer outfile.Close()
 	return WriteWARC(outfile, resp, srcURL, timeStamp)
 }
 
