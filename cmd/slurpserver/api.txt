@@ -5,17 +5,6 @@ GET http://foo.scumways.com/ukarts/api//api/slurp
 
 Fetches full articles from the scrapeomat store.
 
-IMPORTANT NOTE:
-
-Currently there's no fancy mechanism for paging through results.
-Giving the volume of data being shifted, you need to be careful
-not to request silly amounts at a time.
-We've been slurping down a day at a time, and that seems to work
-pretty well, so that's what I'd recommend doing for now - just
-step through the date range you want, day by day.
-From memory, I think it works out to about 1.5MB or so of result
-per request.
-
 
 PARAMETERS:
 
@@ -96,19 +85,11 @@ if known).
 
 FUTURE PLANS:
 
-I'll be adding a paging mechanism, probably based on internal IDs.
-So you'll be able to say "give me all the articles since ID 12345".
-(I'll need this to feed Journalisted, for example)
+- Some sort of simple token-based auth.
 
-I'll also be adding some sort of simple token-based auth.
-I'll give out tokens, and clients will have to pass them in
-as params or cookies or whatever the prevailing wisdom on stackoverflow
-recommends ;-)
-
-Some day there'll be some other API endpoints for interogating publication
+- Other API endpoints for interogating publication
 codes, article counts and whatever other stats or diagnostic stuff would be
-useful. (For now I just ssh in to the server and use raw SQL, but I realise
-that's not a widely-applicable solution ;-).
+useful.
 
 
 
