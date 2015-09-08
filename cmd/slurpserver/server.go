@@ -178,7 +178,7 @@ func getFilter(r *http.Request) (*store.Filter, error) {
 		filt.Count = cnt
 	} else {
 		// default limit when none given
-		filt.Count = 2000
+		filt.Count = 20000
 	}
 	// TODO: enforce a max count value!
 
