@@ -94,6 +94,9 @@ type Context struct {
 type Msg struct {
 	Article *store.Article `json:"article,omitempty"`
 	Error   string         `json:"error,omitempty"`
+	Next    struct {
+		SinceID int `json:"since_id,omitempty"`
+	} `json:"next,omitempty"`
 	/*
 		Info    struct {
 			Sent  int
@@ -121,6 +124,8 @@ func parseTime(in string) (time.Time, error) {
 }
 
 func getFilter(r *http.Request) (*store.Filter, error) {
+	maxCount := 20000
+
 	filt := &store.Filter{}
 
 	// deprecated!
@@ -177,10 +182,14 @@ func getFilter(r *http.Request) (*store.Filter, error) {
 		}
 		filt.Count = cnt
 	} else {
-		// default limit when none given
-		filt.Count = 20000
+		// default to max
+		filt.Count = maxCount
 	}
-	// TODO: enforce a max count value!
+
+	// enforce max count
+	if filt.Count > maxCount {
+		return nil, fmt.Errorf("'count' too high (max %d)", maxCount)
+	}
 
 	// publication codes?
 	if pubs, got := r.Form["pub"]; got {
@@ -266,6 +275,19 @@ func (srv *SlurpServer) performSlurp(w http.ResponseWriter, filt *store.Filter) 
 			}
 			byteCnt += n
 		}
+	}
+
+	// looks like more articles to fetch?
+	if artCnt == filt.Count {
+		// send a "Next" message with a new since_id
+		msg := Msg{}
+		msg.Next.SinceID = maxID
+		n, err := writeMsg(w, &msg)
+		if err != nil {
+			abort <- struct{}{}
+			return err, artCnt, byteCnt
+		}
+		byteCnt += n
 	}
 
 	return nil, artCnt, byteCnt

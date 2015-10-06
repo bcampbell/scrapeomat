@@ -81,6 +81,10 @@ The "content" field is the article text, in somewhat-sanitised HTML.
 The "urls" field contains a list of known URLs (including canonical URL,
 if known).
 
+If the results were clipped, the last object returned will be:
+  {"next": {"since_id": N}}
+where N is the ID of the highest received article, which can be used
+as a parameter in the next request.
 
 
 FUTURE PLANS:

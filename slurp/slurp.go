@@ -30,13 +30,13 @@ type Msg struct {
 
 type Filter struct {
 	// date ranges are [from,to)
-	PubFrom   time.Time
-	PubTo     time.Time
-	AddedFrom time.Time
-	AddedTo   time.Time
-	PubCodes  []string
-	SinceID   int
-	Count     int
+	PubFrom time.Time
+	PubTo   time.Time
+	//	AddedFrom time.Time
+	//	AddedTo   time.Time
+	PubCodes []string
+	SinceID  int
+	Count    int
 }
 
 // Slurp downloads a set of articles from the server
@@ -44,7 +44,6 @@ type Filter struct {
 // errors are returned via Msg. In the case of network errors,
 // Slurp may synthesise fake Msgs containing the error message.
 func (s *Slurper) Slurp(filt *Filter) chan Msg {
-	out := make(chan Msg)
 
 	params := url.Values{}
 
@@ -65,40 +64,43 @@ func (s *Slurper) Slurp(filt *Filter) chan Msg {
 		params.Set("count", strconv.Itoa(filt.Count))
 	}
 
+	out := make(chan Msg)
 	go func() {
-		defer close(out)
-		u := s.Location + "/api/slurp?" + params.Encode()
-
-		// TODO: request (and handle) gzip compression!
-
-		client := s.Client
-		if client == nil {
-			client = &http.Client{}
-		}
-
-		resp, err := client.Get(u)
-		if err != nil {
-			out <- Msg{Error: fmt.Sprintf("HTTP Get failed: %s", err)}
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			out <- Msg{Error: fmt.Sprintf("HTTP Error: %s", resp.Status)}
-			return
-		}
-
-		dec := json.NewDecoder(resp.Body)
 		for {
-			var msg Msg
-			if err := dec.Decode(&msg); err == io.EOF {
-				break
-			} else if err != nil {
-				out <- Msg{Error: fmt.Sprintf("Decode error: %s", err)}
+			defer close(out)
+			u := s.Location + "/api/slurp?" + params.Encode()
+
+			// TODO: request (and handle) gzip compression!
+
+			client := s.Client
+			if client == nil {
+				client = &http.Client{}
+			}
+
+			resp, err := client.Get(u)
+			if err != nil {
+				out <- Msg{Error: fmt.Sprintf("HTTP Get failed: %s", err)}
+				return
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				out <- Msg{Error: fmt.Sprintf("HTTP Error: %s", resp.Status)}
 				return
 			}
 
-			out <- msg
+			dec := json.NewDecoder(resp.Body)
+			for {
+				var msg Msg
+				if err := dec.Decode(&msg); err == io.EOF {
+					break
+				} else if err != nil {
+					out <- Msg{Error: fmt.Sprintf("Decode error: %s", err)}
+					return
+				}
+
+				out <- msg
+			}
 		}
 	}()
 
