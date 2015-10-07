@@ -423,7 +423,7 @@ func (store *Store) Fetch(filt *Filter) (<-chan FetchedArt, chan<- struct{}) {
 	}
 
 	c := make(chan FetchedArt)
-	abort := make(chan struct{})
+	abort := make(chan struct{}, 1) // buffering required to avoid deadlock TODO: is there a more elegant solution?
 	go func() {
 		defer close(c)
 		defer close(abort)
