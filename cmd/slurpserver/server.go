@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/handlers"
 	"html/template"
 	"net/http"
 	"semprini/scrapeomat/store"
@@ -73,9 +74,12 @@ func NewServer(db *store.Store, port int, prefix string, infoLog Logger, errLog 
 
 func (srv *SlurpServer) Run() error {
 
-	http.HandleFunc(srv.Prefix+"/api/slurp", func(w http.ResponseWriter, r *http.Request) {
-		srv.slurpHandler(&Context{}, w, r)
-	})
+	http.Handle(srv.Prefix+"/api/slurp", handlers.CompressHandler(
+		http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				srv.slurpHandler(&Context{}, w, r)
+			})))
+
 	http.HandleFunc(srv.Prefix+"/api/count", func(w http.ResponseWriter, r *http.Request) {
 		srv.countHandler(&Context{}, w, r)
 	})
