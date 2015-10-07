@@ -25,7 +25,9 @@ func NewSlurper(location string) *Slurper {
 type Msg struct {
 	Article *Article `json:"article,omitempty"`
 	Error   string   `json:"error,omitempty"`
-	// TODO: include info/progress report messages
+	Next    struct {
+		SinceID int `json:"since_id,omitempty"`
+	} `json:"next,omitempty"`
 }
 
 type Filter struct {
@@ -43,6 +45,9 @@ type Filter struct {
 // returns a channel which streams out messages.
 // errors are returned via Msg. In the case of network errors,
 // Slurp may synthesise fake Msgs containing the error message.
+// will repeatedly request until all results returned.
+// filter count param is not the total - it is the max articles to
+// return per request.
 func (s *Slurper) Slurp(filt *Filter) chan Msg {
 
 	params := url.Values{}
@@ -66,17 +71,17 @@ func (s *Slurper) Slurp(filt *Filter) chan Msg {
 
 	out := make(chan Msg)
 	go func() {
+		defer close(out)
+
+		client := s.Client
+		if client == nil {
+			client = &http.Client{}
+		}
+
 		for {
-			defer close(out)
-			u := s.Location + "/api/slurp?" + params.Encode()
-
 			// TODO: request (and handle) gzip compression!
-
-			client := s.Client
-			if client == nil {
-				client = &http.Client{}
-			}
-
+			u := s.Location + "/api/slurp?" + params.Encode()
+			// fmt.Printf("request: %s\n", u)
 			resp, err := client.Get(u)
 			if err != nil {
 				out <- Msg{Error: fmt.Sprintf("HTTP Get failed: %s", err)}
@@ -88,7 +93,7 @@ func (s *Slurper) Slurp(filt *Filter) chan Msg {
 				out <- Msg{Error: fmt.Sprintf("HTTP Error: %s", resp.Status)}
 				return
 			}
-
+			nextSinceID := 0
 			dec := json.NewDecoder(resp.Body)
 			for {
 				var msg Msg
@@ -99,8 +104,19 @@ func (s *Slurper) Slurp(filt *Filter) chan Msg {
 					return
 				}
 
-				out <- msg
+				// is it a to-be-continued message?
+				if msg.Next.SinceID > 0 {
+					nextSinceID = msg.Next.SinceID
+				} else {
+					out <- msg
+				}
 			}
+
+			if nextSinceID == 0 {
+				break
+			}
+			// update the query params with the new since_id
+			params.Set("since_id", strconv.Itoa(nextSinceID))
 		}
 	}()
 
