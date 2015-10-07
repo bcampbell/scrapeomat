@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"semprini/scrapeomat/slurp"
 )
 
@@ -19,6 +20,10 @@ func init() {
 
 	//	flag.StringVar(&filtParams.pubFrom, "pubfrom", 0, "only articles published on or after this date")
 	//	flag.StringVar(&filtParams.pubTo, "pubto", 0, "only articles published before this date")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]... <server URL>\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 }
 
 func main() {
@@ -31,16 +36,16 @@ func main() {
 	}
 	client := slurp.NewSlurper(flag.Arg(0))
 
-	incoming := client.Slurp(filt)
+	incoming, _ := client.Slurp(filt)
 
 	for msg := range incoming {
 		if msg.Error != "" {
-			fmt.Printf("ERROR: %s\n", msg.Error)
+			fmt.Fprintf(os.Stdout, "ERROR: %s\n", msg.Error)
 		} else if msg.Article != nil {
 			art := msg.Article
 			fmt.Printf("%s (%s)\n", art.Headline, art.CanonicalURL)
 		} else {
-			fmt.Printf("WARN empty message...\n")
+			fmt.Fprintf(os.Stdout, "WARN: empty message...\n")
 		}
 	}
 }

@@ -45,10 +45,10 @@ type Filter struct {
 // returns a channel which streams out messages.
 // errors are returned via Msg. In the case of network errors,
 // Slurp may synthesise fake Msgs containing the error message.
-// will repeatedly request until all results returned.
+// Will repeatedly request until all results returned.
 // filter count param is not the total - it is the max articles to
 // return per request.
-func (s *Slurper) Slurp(filt *Filter) chan Msg {
+func (s *Slurper) Slurp(filt *Filter) (chan Msg, chan struct{}) {
 
 	params := url.Values{}
 
@@ -70,8 +70,10 @@ func (s *Slurper) Slurp(filt *Filter) chan Msg {
 	}
 
 	out := make(chan Msg)
+	cancel := make(chan struct{}, 1) // buffered to prevent deadlock
 	go func() {
 		defer close(out)
+		defer close(cancel)
 
 		client := s.Client
 		if client == nil {
@@ -79,7 +81,6 @@ func (s *Slurper) Slurp(filt *Filter) chan Msg {
 		}
 
 		for {
-			// TODO: request (and handle) gzip compression!
 			u := s.Location + "/api/slurp?" + params.Encode()
 			// fmt.Printf("request: %s\n", u)
 			resp, err := client.Get(u)
@@ -96,6 +97,16 @@ func (s *Slurper) Slurp(filt *Filter) chan Msg {
 			nextSinceID := 0
 			dec := json.NewDecoder(resp.Body)
 			for {
+				// check for cancelation request
+				select {
+				case <-cancel:
+					fmt.Printf("CANCELLLLLSS\n")
+					out <- Msg{Error: "Cancelled"}
+					fmt.Printf("EXXXXIITT\n")
+					return
+				default:
+				}
+
 				var msg Msg
 				if err := dec.Decode(&msg); err == io.EOF {
 					break
@@ -120,5 +131,5 @@ func (s *Slurper) Slurp(filt *Filter) chan Msg {
 		}
 	}()
 
-	return out
+	return out, cancel
 }
