@@ -48,4 +48,12 @@ type Article struct {
 	// Keywords contains data from rel-tags, meta keywords etc...
 	Keywords []Keyword `json:"keywords,omitempty"`
 	Section  string    `json:"section,omitempty"`
+
+	// extra fields from twitcooker
+	Extra struct {
+		RetweetCount  int `json:"retweet_count,omitempty"`
+		FavoriteCount int `json:"favorite_count,omitempty"`
+		// resolved links
+		Links []string `json:"links,omitempty"`
+	} `json:"extra,omitempty"`
 }
