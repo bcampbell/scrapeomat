@@ -237,11 +237,11 @@ func (srv *SlurpServer) slurpHandler(ctx *Context, w http.ResponseWriter, r *htt
 func writeMsg(w http.ResponseWriter, msg *Msg) (int, error) {
 	outBuf, err := json.Marshal(msg)
 	if err != nil {
-		return 0, fmt.Errorf("json encoding error: %s\n", err)
+		return 0, fmt.Errorf("json encoding error: %s", err)
 	}
 	n, err := w.Write(outBuf)
 	if err != nil {
-		return n, fmt.Errorf("write error: %s\n", err)
+		return n, fmt.Errorf("write error: %s", err)
 	}
 
 	return n, nil
