@@ -25,10 +25,10 @@ func main() {
 	flag.IntVar(&opts.verbosity, "v", 0, "verbosity (0=errors only, 1=info, 2=debug)")
 	flag.Parse()
 
-	errLog := log.New(os.Stderr, "ERR: ", log.LstdFlags)
+	errLog := log.New(os.Stderr, "ERR: ", 0)
 	var infoLog Logger
 	if opts.verbosity > 0 {
-		infoLog = log.New(os.Stderr, "INF: ", log.LstdFlags)
+		infoLog = log.New(os.Stderr, "INF: ", 0)
 	} else {
 		infoLog = nullLogger{}
 	}
@@ -52,7 +52,7 @@ func main() {
 
 	db.ErrLog = errLog
 	if opts.verbosity >= 2 {
-		db.DebugLog = log.New(os.Stderr, "store: ", log.LstdFlags)
+		db.DebugLog = log.New(os.Stderr, "store: ", 0)
 	}
 
 	// run server
