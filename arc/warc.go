@@ -4,6 +4,7 @@ package arc
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -76,7 +77,7 @@ func ArchiveResponse(warcDir string, resp *http.Response, srcURL string, timeSta
 
 	hasher := md5.New()
 	hasher.Write([]byte(srcURL))
-	filename := hex.EncodeToString(hasher.Sum(nil)) + ".warc"
+	filename := hex.EncodeToString(hasher.Sum(nil)) + ".warc.gz"
 
 	//dir := path.Join(warcDir, u.Host, timeStamp.UTC().Format("2006-01-02"))
 
@@ -92,7 +93,11 @@ func ArchiveResponse(warcDir string, resp *http.Response, srcURL string, timeSta
 		return err
 	}
 	defer outfile.Close()
-	return WriteWARC(outfile, resp, srcURL, timeStamp)
+
+	gzw := gzip.NewWriter(outfile)
+	defer gzw.Close()
+
+	return WriteWARC(gzw, resp, srcURL, timeStamp)
 }
 
 func WriteWARC(w io.Writer, resp *http.Response, srcURL string, timeStamp time.Time) error {
