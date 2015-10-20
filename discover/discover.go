@@ -35,11 +35,17 @@ func (l NullLogger) Printf(format string, v ...interface{}) {
 type DiscovererDef struct {
 	Name string
 	URL  string
-	// article urls to include
+	// article urls to include - regexes
 	ArtPat []string
-	// article urls to exclude
+	// article urls to exclude - regexes
 	XArtPat []string
-	NavSel  string
+
+	// article url forms to include (eg "/YYYY/MM/SLUG.html")
+	ArtForm []string
+	// article url forms to exclude
+	XArtForm []string
+
+	NavSel string
 	// BaseErrorThreshold is starting number of http errors to accept before
 	// bailing out.
 	// error threshold formula: base + 10% of successful request count
@@ -95,11 +101,31 @@ func NewDiscoverer(cfg DiscovererDef) (*Discoverer, error) {
 	}
 	disc.Name = cfg.Name
 	disc.StartURL = *u
+	// parse the regexp include/exclude rules
 	disc.ArtPats, err = buildRegExps(cfg.ArtPat)
 	if err != nil {
 		return nil, err
 	}
 	disc.XArtPats, err = buildRegExps(cfg.XArtPat)
+	if err != nil {
+		return nil, err
+	}
+	// parse the simplified include/exclude forms
+	for _, f := range cfg.ArtForm {
+		re, err := patToRegexp(f)
+		if err != nil {
+			return nil, err
+		}
+		disc.ArtPats = append(disc.ArtPats, re)
+	}
+	for _, f := range cfg.XArtForm {
+		re, err := patToRegexp(f)
+		if err != nil {
+			return nil, err
+		}
+		disc.XArtPats = append(disc.XArtPats, re)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -240,6 +266,13 @@ func (disc *Discoverer) CookArticleURL(baseURL *url.URL, artLink string) (*url.U
 	if err != nil {
 		return nil, err
 	}
+	// apply our sanitising rules for this site
+	if disc.StripFragments {
+		u.Fragment = ""
+	}
+	if disc.StripQuery {
+		u.RawQuery = ""
+	}
 
 	// normalise url (strip trailing /, etc)
 	normalised := purell.NormalizeURL(u, purell.FlagsUsuallySafeGreedy)
@@ -254,7 +287,7 @@ func (disc *Discoverer) CookArticleURL(baseURL *url.URL, artLink string) (*url.U
 		return nil, fmt.Errorf("host rejected (%s)", u.Host)
 	}
 
-	// matches one of our url forms
+	// matches one of our url forms?
 	foo := u.RequestURI()
 	accept := false
 	for _, pat := range disc.ArtPats {
@@ -275,13 +308,6 @@ func (disc *Discoverer) CookArticleURL(baseURL *url.URL, artLink string) (*url.U
 		return nil, fmt.Errorf("url rejected")
 	}
 
-	// apply our sanitising rules for this site
-	if disc.StripFragments {
-		u.Fragment = ""
-	}
-	if disc.StripQuery {
-		u.RawQuery = ""
-	}
 	return u, nil
 }
 
