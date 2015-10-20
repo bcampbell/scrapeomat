@@ -50,9 +50,9 @@ type ScraperConf struct {
 func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string) (*Scraper, error) {
 	scraper := Scraper{Name: name, Conf: conf, archiveDir: archiveDir, runPeriod: 3 * time.Hour}
 
-	scraper.errorLog = log.New(os.Stderr, "ERR "+name+": ", log.LstdFlags)
+	scraper.errorLog = log.New(os.Stderr, "ERR "+name+": ", 0)
 	if verbosity > 0 {
-		scraper.infoLog = log.New(os.Stderr, "INF "+name+": ", log.LstdFlags)
+		scraper.infoLog = log.New(os.Stderr, "INF "+name+": ", 0)
 	} else {
 		scraper.infoLog = log.New(ioutil.Discard, "", 0)
 	}
