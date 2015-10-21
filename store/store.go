@@ -266,6 +266,8 @@ func (store *Store) stash2(tx *sql.Tx, art *Article) (int, error) {
 }
 
 // returns 0,nil if not found
+/*
+TODO: handle multiple matches...
 func (store *Store) FindArticle(artURLs []string) (int, error) {
 
 	frags := make(fragList, 0, len(artURLs))
@@ -283,7 +285,10 @@ func (store *Store) FindArticle(artURLs []string) (int, error) {
 	}
 	return artID, nil
 }
+*/
 
+// NOTE: remember article urls don't _have_ to be unique. If you only pass
+// canonical urls in here you should be ok :-)
 func (store *Store) WhichAreNew(artURLs []string) ([]string, error) {
 
 	stmt, err := store.db.Prepare(`SELECT article_id FROM article_url WHERE url=$1`)
