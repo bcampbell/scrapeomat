@@ -45,7 +45,11 @@ type DiscovererDef struct {
 	// article url forms to exclude
 	XArtForm []string
 
+	// CSS selector to identify navigation links
 	NavSel string
+	// regexp patterns of pages to skip during link discovery
+	XNavPat []string
+
 	// BaseErrorThreshold is starting number of http errors to accept before
 	// bailing out.
 	// error threshold formula: base + 10% of successful request count
@@ -70,6 +74,7 @@ type Discoverer struct {
 	ArtPats            []*regexp.Regexp
 	XArtPats           []*regexp.Regexp
 	NavLinkSel         cascadia.Selector
+	XNavPats           []*regexp.Regexp
 	BaseErrorThreshold int
 	StripFragments     bool
 	StripQuery         bool
@@ -126,10 +131,6 @@ func NewDiscoverer(cfg DiscovererDef) (*Discoverer, error) {
 		disc.XArtPats = append(disc.XArtPats, re)
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
 	if cfg.NavSel == "" {
 		disc.NavLinkSel = nil
 	} else {
@@ -139,6 +140,12 @@ func NewDiscoverer(cfg DiscovererDef) (*Discoverer, error) {
 		}
 		disc.NavLinkSel = sel
 	}
+
+	disc.XNavPats, err = buildRegExps(cfg.XNavPat)
+	if err != nil {
+		return nil, err
+	}
+
 	disc.BaseErrorThreshold = cfg.BaseErrorThreshold
 
 	if cfg.HostPat != "" {
@@ -323,6 +330,18 @@ func (disc *Discoverer) findNavLinks(root *html.Node) (LinkSet, error) {
 		}
 
 		if !disc.isHostGood(link.Host) {
+			continue
+		}
+
+		// skip excluded nav links
+		skip := false
+		for _, pat := range disc.XNavPats {
+			if pat.MatchString(link.RequestURI()) {
+				skip = true
+				break
+			}
+		}
+		if skip {
 			continue
 		}
 
