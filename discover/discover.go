@@ -258,7 +258,9 @@ var aSel cascadia.Selector = cascadia.MustCompile("a")
 func (disc *Discoverer) findArticles(baseURL *url.URL, root *html.Node) (LinkSet, error) {
 	arts := make(LinkSet)
 	for _, a := range aSel.MatchAll(root) {
-		u, err := disc.CookArticleURL(baseURL, GetAttr(a, "href"))
+
+		rawURL := GetAttr(a, "href")
+		u, err := disc.CookArticleURL(baseURL, rawURL)
 		if err != nil {
 			continue
 		}
@@ -291,7 +293,7 @@ func (disc *Discoverer) CookArticleURL(baseURL *url.URL, artLink string) (*url.U
 
 	// on a host we accept?
 	if !disc.isHostGood(u.Host) {
-		return nil, fmt.Errorf("host rejected (%s)", u.Host)
+		return nil, fmt.Errorf("bad host (%s)", u.Host)
 	}
 
 	// matches one of our url forms?
@@ -303,16 +305,15 @@ func (disc *Discoverer) CookArticleURL(baseURL *url.URL, artLink string) (*url.U
 			break
 		}
 	}
-	if accept {
-		for _, pat := range disc.XArtPats {
-			if pat.MatchString(foo) {
-				accept = false
-				break
-			}
-		}
-	}
 	if !accept {
-		return nil, fmt.Errorf("url rejected")
+		return nil, fmt.Errorf("non-article")
+	}
+
+	for _, pat := range disc.XArtPats {
+		if pat.MatchString(foo) {
+			//disc.InfoLog.Printf("reject %s (%s)\n", artLink, pat)
+			return nil, fmt.Errorf("match %s", pat)
+		}
 	}
 
 	return u, nil
