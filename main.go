@@ -18,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"semprini/scrapeomat/store"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -45,9 +46,15 @@ func main() {
 	}
 
 	if *listFlag {
+		names := sort.StringSlice{}
 		for _, scraper := range scrapers {
-			fmt.Println(scraper.Name)
+			names = append(names, scraper.Name)
 		}
+		sort.Sort(names)
+		for _, name := range names {
+			fmt.Println(name)
+		}
+
 		return
 	}
 
