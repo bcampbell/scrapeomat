@@ -80,6 +80,12 @@ func (srv *SlurpServer) Run() error {
 				srv.slurpHandler(&Context{}, w, r)
 			})))
 
+	http.Handle(srv.Prefix+"/api/pubs", handlers.CompressHandler(
+		http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				srv.pubsHandler(&Context{}, w, r)
+			})))
+
 	http.HandleFunc(srv.Prefix+"/api/count", func(w http.ResponseWriter, r *http.Request) {
 		srv.countHandler(&Context{}, w, r)
 	})
@@ -339,4 +345,33 @@ func (srv *SlurpServer) browseHandler(ctx *Context, w http.ResponseWriter, r *ht
 		http.Error(w, fmt.Sprintf("template error: %s", err), 500)
 		return
 	}
+}
+
+// implement the publication list API
+func (srv *SlurpServer) pubsHandler(ctx *Context, w http.ResponseWriter, r *http.Request) {
+
+	pubs, err := srv.db.FetchPublications()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("DB error: %s", err), 500)
+		return
+	}
+
+	out := struct {
+		Publications []store.Publication `json:"publications"`
+	}{
+		pubs,
+	}
+
+	outBuf, err := json.Marshal(out)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("json encoding error: %s", err), 500)
+		return
+	}
+	_, err = w.Write(outBuf)
+	if err != nil {
+		srv.ErrLog.Printf("Write error: %s\n", err)
+		return
+	}
+
+	srv.InfoLog.Printf("%s publications\n", r.RemoteAddr)
 }

@@ -584,3 +584,25 @@ func (store *Store) fetchKeywords(artID int) ([]Keyword, error) {
 	}
 	return out, nil
 }
+
+func (store *Store) FetchPublications() ([]Publication, error) {
+	rows, err := store.db.Query(`SELECT code,name,domain FROM publication ORDER by code`)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Publication{}
+	for rows.Next() {
+		var p Publication
+		if err := rows.Scan(&p.Code, &p.Name, &p.Domain); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+
+}

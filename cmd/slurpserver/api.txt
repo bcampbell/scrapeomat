@@ -97,3 +97,16 @@ useful.
 
 
 
+METHOD:
+GET /api/pubs
+
+PARAMETERS:
+none
+
+RETURNS
+json object with one member, "publications".
+"publications" is a list of the publications in the DB, each with the fields:
+code    - short code (lowercase) for publication (eg "dailyblah")
+name    - human-readable name of publication (eg "The Daily Blah")
+domain  - main domain for publication  (eg "www.dailyblah.com")
+
