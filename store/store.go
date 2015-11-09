@@ -29,9 +29,14 @@ type Filter struct {
 	PubTo     time.Time
 	AddedFrom time.Time
 	AddedTo   time.Time
-	PubCodes  []string
-	SinceID   int
-	Count     int
+	// if empty, accept all publications (else only ones in list)
+	PubCodes []string
+	// exclude any publications in XPubCodes
+	XPubCodes []string
+	// Only return articles with ID > SinceID
+	SinceID int
+	// max number of articles wanted
+	Count int
 }
 
 // Describe returns a concise description of the filter for logging/debugging/whatever
@@ -56,6 +61,14 @@ func (filt *Filter) Describe() string {
 
 	if len(filt.PubCodes) > 0 {
 		s += strings.Join(filt.PubCodes, "|") + " "
+	}
+
+	if len(filt.XPubCodes) > 0 {
+		foo := make([]string, len(filt.XPubCodes))
+		for i, x := range filt.XPubCodes {
+			foo[i] = "!" + x
+		}
+		s += strings.Join(foo, "|") + " "
 	}
 
 	if filt.Count > 0 {
@@ -402,6 +415,16 @@ func buildWhere(filt *Filter) *fragList {
 			bar = append(bar, code)
 		}
 		frags.Add("p.code IN ("+strings.Join(foo, ",")+")", bar...)
+	}
+
+	if len(filt.XPubCodes) > 0 {
+		foo := []string{}
+		bar := []interface{}{}
+		for _, code := range filt.XPubCodes {
+			foo = append(foo, "?")
+			bar = append(bar, code)
+		}
+		frags.Add("p.code NOT IN ("+strings.Join(foo, ",")+")", bar...)
 	}
 
 	return frags

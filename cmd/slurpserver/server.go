@@ -89,9 +89,11 @@ func (srv *SlurpServer) Run() error {
 	http.HandleFunc(srv.Prefix+"/api/count", func(w http.ResponseWriter, r *http.Request) {
 		srv.countHandler(&Context{}, w, r)
 	})
-	http.HandleFunc(srv.Prefix+"/browse", func(w http.ResponseWriter, r *http.Request) {
-		srv.browseHandler(&Context{}, w, r)
-	})
+	/*
+		http.HandleFunc(srv.Prefix+"/browse", func(w http.ResponseWriter, r *http.Request) {
+			srv.browseHandler(&Context{}, w, r)
+		})
+	*/
 
 	srv.InfoLog.Printf("Started at localhost:%d%s/\n", srv.Port, srv.Prefix)
 	return http.ListenAndServe(fmt.Sprintf(":%d", srv.Port), nil)
@@ -204,6 +206,11 @@ func getFilter(r *http.Request) (*store.Filter, error) {
 	// publication codes?
 	if pubs, got := r.Form["pub"]; got {
 		filt.PubCodes = pubs
+	}
+
+	// publication codes to exclude?
+	if xpubs, got := r.Form["xpub"]; got {
+		filt.XPubCodes = xpubs
 	}
 
 	return filt, nil

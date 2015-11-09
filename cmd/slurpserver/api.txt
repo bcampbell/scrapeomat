@@ -35,6 +35,10 @@ pub
   (I can get you a list if you need them, or you can just pick them out
   of the results yourself :-)
 
+xpub
+  Exclude publications. Any publications specified with xpub will
+  be filtered out.
+
 
 since_id
   Only return articles with an internal ID larger than this.
