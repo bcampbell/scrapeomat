@@ -50,6 +50,9 @@ type DiscovererDef struct {
 	// regexp patterns of pages to skip during link discovery
 	XNavPat []string
 
+	// css selector for elements to cull during article discovery
+	CruftSel string
+
 	// BaseErrorThreshold is starting number of http errors to accept before
 	// bailing out.
 	// error threshold formula: base + 10% of successful request count
@@ -75,6 +78,7 @@ type Discoverer struct {
 	XArtPats           []*regexp.Regexp
 	NavLinkSel         cascadia.Selector
 	XNavPats           []*regexp.Regexp
+	CruftSel           cascadia.Selector
 	BaseErrorThreshold int
 	StripFragments     bool
 	StripQuery         bool
@@ -146,6 +150,16 @@ func NewDiscoverer(cfg DiscovererDef) (*Discoverer, error) {
 		return nil, err
 	}
 
+	if cfg.CruftSel == "" {
+		disc.CruftSel = nil
+	} else {
+		sel, err := cascadia.Compile(cfg.CruftSel)
+		if err != nil {
+			return nil, err
+		}
+		disc.CruftSel = sel
+	}
+
 	disc.BaseErrorThreshold = cfg.BaseErrorThreshold
 
 	if cfg.HostPat != "" {
@@ -208,6 +222,15 @@ func (disc *Discoverer) Run(client *http.Client) (LinkSet, error) {
 			}
 		*/
 		// end debugging hack
+
+		// remove cruft from page before discovery
+		if disc.CruftSel != nil {
+			for _, cruft := range disc.CruftSel.MatchAll(root) {
+				if cruft.Parent != nil { // check to handle nested cruft...
+					cruft.Parent.RemoveChild(cruft)
+				}
+			}
+		}
 
 		navLinks, err := disc.findNavLinks(root)
 		if err != nil {
