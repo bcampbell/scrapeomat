@@ -110,6 +110,9 @@ func (scraper *SunScraper) Discover(client *http.Client) ([]string, error) {
 	seen := map[string]struct{}{}      // sections visited
 	foundArts := map[string]struct{}{} // article links found
 
+	errMax := 8
+	errCnt := 0
+
 	// cheesy hack - The Sun has got the wrong URL for their "sun says" section,
 	// so we do a separate check using their search page instead. sigh.
 	sunsays, err := scraper.sunsaysDiscover(client)
@@ -130,8 +133,12 @@ func (scraper *SunScraper) Discover(client *http.Client) ([]string, error) {
 		//fmt.Printf("fetching %s\n", sectionURL)
 		raw, err := scraper.fetchJSON(client, sectionURL)
 		if err != nil {
-			// TODO: supply an error threshold?
-			return nil, err
+			scraper.infoLog.Printf("%s: fetch error: %s\n", sectionURL, err)
+			errCnt++
+			if errCnt > errMax {
+				return nil, fmt.Errorf("ABORT - too many errors")
+			}
+			continue
 		}
 
 		in := bytes.NewBuffer(raw)
@@ -140,7 +147,13 @@ func (scraper *SunScraper) Discover(client *http.Client) ([]string, error) {
 		var results SectionMessage
 		err = decoder.Decode(&results)
 		if err != nil {
-			return nil, err
+
+			scraper.infoLog.Printf("%s: JSON decode error: %s\n", sectionURL, err)
+			errCnt++
+			if errCnt > errMax {
+				return nil, fmt.Errorf("ABORT - too many errors")
+			}
+			continue
 		}
 
 		// grab sections
