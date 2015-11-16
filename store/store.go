@@ -629,3 +629,36 @@ func (store *Store) FetchPublications() ([]Publication, error) {
 	return out, nil
 
 }
+
+type DatePubCount struct {
+	Date    time.Time
+	PubCode string
+	Count   int
+}
+
+func (store *Store) FetchSummary(dateFrom, dateTo time.Time) ([]DatePubCount, error) {
+	q := `SELECT CAST(a.published AS DATE) AS day, p.code, COUNT(*)
+    FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
+    WHERE a.published>=$1 AND a.published<=$2
+    GROUP BY day, p.code
+    ORDER BY day ASC ,p.code ASC;`
+
+	rows, err := store.db.Query(q, dateFrom, dateTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []DatePubCount{}
+	for rows.Next() {
+		foo := DatePubCount{}
+		if err := rows.Scan(&foo.Date, &foo.PubCode, &foo.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, foo)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+
+}
