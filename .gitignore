@@ -1,0 +1,9 @@
+*.swp
+scrapeomat
+cmd/findarts/findarts
+cmd/rescrape/rescrape
+cmd/slurpserver/slurpserver
+cmd/thesun/thesun
+cmd/summarytool/summarytool
+cmd/slurptool/slurptool
+cmd/backfill/backfill
