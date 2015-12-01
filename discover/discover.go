@@ -232,7 +232,7 @@ func (disc *Discoverer) Run(client *http.Client) (LinkSet, error) {
 			}
 		}
 
-		navLinks, err := disc.findNavLinks(root)
+		navLinks, err := disc.findNavLinks(&pageURL, root)
 		if err != nil {
 			return nil, err
 		}
@@ -342,13 +342,13 @@ func (disc *Discoverer) CookArticleURL(baseURL *url.URL, artLink string) (*url.U
 	return u, nil
 }
 
-func (disc *Discoverer) findNavLinks(root *html.Node) (LinkSet, error) {
+func (disc *Discoverer) findNavLinks(pageURL *url.URL, root *html.Node) (LinkSet, error) {
 	navLinks := make(LinkSet)
 	if disc.NavLinkSel == nil {
 		return navLinks, nil
 	}
 	for _, a := range disc.NavLinkSel.MatchAll(root) {
-		link, err := disc.StartURL.Parse(GetAttr(a, "href"))
+		link, err := pageURL.Parse(GetAttr(a, "href"))
 		if err != nil {
 			continue
 		}
