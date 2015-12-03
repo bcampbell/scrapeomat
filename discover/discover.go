@@ -54,7 +54,7 @@ type DiscovererDef struct {
 	CruftSel string
 
 	// BaseErrorThreshold is starting number of http errors to accept before
-	// bailing out.
+	// bailing out. default is 5   (and 0 is considered as unset, so default is applied)
 	// error threshold formula: base + 10% of successful request count
 	BaseErrorThreshold int
 
@@ -161,6 +161,10 @@ func NewDiscoverer(cfg DiscovererDef) (*Discoverer, error) {
 	}
 
 	disc.BaseErrorThreshold = cfg.BaseErrorThreshold
+	// treat base threshold of 0 as unset, and use a default
+	if disc.BaseErrorThreshold == 0 {
+		disc.BaseErrorThreshold = 5
+	}
 
 	if cfg.HostPat != "" {
 		re, err := regexp.Compile(cfg.HostPat)
