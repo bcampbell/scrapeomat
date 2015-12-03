@@ -83,7 +83,7 @@ func ArchiveResponse(warcDir string, resp *http.Response, srcURL string, timeSta
 
 	// .../www.example.com/1/12/123/12345678.warc
 	dir := path.Join(warcDir, u.Host, spreadPath(filename))
-	err = os.MkdirAll(dir, 0700)
+	err = os.MkdirAll(dir, 0777) // let umask cull the perms down...
 	if err != nil {
 		return err
 	}
