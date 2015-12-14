@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/bcampbell/arts/arts"
 	"io/ioutil"
@@ -39,6 +40,8 @@ type Scraper struct {
 	archiveDir string
 	stats      ScrapeStats
 	runPeriod  time.Duration
+
+	quit chan struct{}
 }
 
 type ScraperConf struct {
@@ -47,8 +50,16 @@ type ScraperConf struct {
 	PubCode string
 }
 
+var ErrQuit = errors.New("quit requested")
+
 func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string) (*Scraper, error) {
-	scraper := Scraper{Name: name, Conf: conf, archiveDir: archiveDir, runPeriod: 3 * time.Hour}
+	scraper := Scraper{
+		Name:       name,
+		Conf:       conf,
+		archiveDir: archiveDir,
+		runPeriod:  3 * time.Hour,
+		quit:       make(chan struct{}, 1),
+	}
 
 	scraper.errorLog = log.New(os.Stderr, "ERR "+name+": ", 0)
 	if verbosity > 0 {
@@ -86,7 +97,10 @@ func (scraper *Scraper) Login(c *http.Client) error {
 func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
 	disc := scraper.discoverer
 
-	artLinks, err := disc.Run(c)
+	artLinks, err := disc.Run(c, scraper.quit)
+	if err == discover.ErrQuit {
+		return nil, ErrQuit
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +117,10 @@ func (scraper *Scraper) Start(db *store.Store, c *http.Client) {
 	for {
 		lastRun := time.Now()
 		err := scraper.DoRun(db, c)
+		if err == ErrQuit {
+			scraper.infoLog.Printf("Quit requested!\n")
+			return
+		}
 		if err != nil {
 			scraper.errorLog.Printf("run aborted: %s", err)
 		}
@@ -110,8 +128,20 @@ func (scraper *Scraper) Start(db *store.Store, c *http.Client) {
 		nextRun := lastRun.Add(scraper.runPeriod)
 		delay := nextRun.Sub(time.Now())
 		scraper.infoLog.Printf("next run at %s (sleeping for %s)\n", nextRun.Format(time.RFC3339), delay)
-		time.Sleep(delay)
+		// wait for next run, or a quit request
+		select {
+		case <-scraper.quit:
+			scraper.infoLog.Printf("Quit requested!\n")
+			return
+		case <-time.After(delay):
+			scraper.infoLog.Printf("Wakeup!\n")
+		}
 	}
+}
+
+// stop the scraper, at the next opportunity
+func (scraper *Scraper) Stop() {
+	scraper.quit <- struct{}{}
 }
 
 // perform a single scraper run
@@ -135,7 +165,7 @@ func (scraper *Scraper) DoRun(db *store.Store, c *http.Client) error {
 
 	foundArts, err := scraper.Discover(c)
 	if err != nil {
-		return fmt.Errorf("discovery failed: %s", err)
+		return err
 	}
 
 	newArts, err := db.WhichAreNew(foundArts)
@@ -199,11 +229,24 @@ func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Cl
 	return scraper.FetchAndStash(newArts, db, c)
 }
 
+func (scraper *Scraper) checkQuit() bool {
+	select {
+	case <-scraper.quit:
+		return true
+	default:
+		return false
+	}
+}
+
 func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, c *http.Client) error {
 	//scraper.infoLog.Printf("Start scraping\n")
 
 	// fetch and extract 'em
 	for _, artURL := range newArts {
+		if scraper.checkQuit() {
+			return ErrQuit
+		}
+
 		//		scraper.infoLog.Printf("fetch/scrape %s", artURL)
 		art, err := scraper.ScrapeArt(c, artURL)
 		if err != nil {

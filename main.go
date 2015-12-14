@@ -15,12 +15,14 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"semprini/scrapeomat/store"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 var opts struct {
@@ -46,6 +48,7 @@ func main() {
 	}
 
 	if *listFlag {
+		// just list available scrapers and exit
 		names := sort.StringSlice{}
 		for _, scraper := range scrapers {
 			names = append(names, scraper.Name)
@@ -83,13 +86,20 @@ func main() {
 		}
 	}
 
+	// resolve names to scrapers
+	targetScrapers := make([]*Scraper, 0, len(targetSites))
+	for _, siteName := range targetSites {
+		scraper, got := scrapers[siteName]
+		if !got {
+			fmt.Fprintf(os.Stderr, "Unknown site '%s'\n", siteName)
+			continue
+		}
+		targetScrapers = append(targetScrapers, scraper)
+	}
+
 	if *discoverFlag {
-		for _, siteName := range targetSites {
-			scraper, got := scrapers[siteName]
-			if !got {
-				fmt.Fprintf(os.Stderr, "Unknown site '%s'\n", siteName)
-				continue
-			}
+		// just run discovery phase, print out article URLs, then exit
+		for _, scraper := range targetScrapers {
 			var client *http.Client
 			if scraper.Conf.Cookies {
 				client = politeClientWithCookies
@@ -149,18 +159,17 @@ func main() {
 			fmt.Fprintf(os.Stderr, "ERROR reading %s: %s\n", *inputListFlag, err)
 			os.Exit(1)
 		}
-		if len(targetSites) != 1 {
+		if len(targetScrapers) != 1 {
 			fmt.Fprintf(os.Stderr, "Only one scraper allowed with -i flag\n")
+			// TODO: use scraper host and article patterns to pick a scraper?
+			// hardly even need a scraper anyway - the article scraping part is mostly
+			// generic...
+			// scraper-specific stuff: pubcode, article accept/reject rules, paywall handling... custom stuff (eg json-based articles)
 			os.Exit(1)
 		}
 
 		// invoke scraper
-		for _, siteName := range targetSites {
-			scraper, got := scrapers[siteName]
-			if !got {
-				fmt.Fprintf(os.Stderr, "Unknown site '%s'\n", siteName)
-				continue
-			}
+		for _, scraper := range targetScrapers {
 			var client *http.Client
 			if scraper.Conf.Cookies {
 				scraper.infoLog.Printf("using cookies")
@@ -178,28 +187,38 @@ func main() {
 		return
 	}
 
-	// Run all the scrapers as goroutines
-	var wg sync.WaitGroup
-	for _, siteName := range targetSites {
-		scraper, got := scrapers[siteName]
-		if !got {
-			fmt.Fprintf(os.Stderr, "Unknown site '%s'\n", siteName)
-			continue
+	// Run as a server
+
+	sigChan := make(chan os.Signal, 1)
+
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		// wait for signal
+		s := <-sigChan
+		fmt.Fprintf(os.Stderr, "Signal received (%s). Stopping scrapers...\n", s)
+		// stop all the scrapers
+		for _, scraper := range targetScrapers {
+			scraper.Stop()
 		}
+	}()
+
+	var wg sync.WaitGroup
+	for _, scraper := range targetScrapers {
 		wg.Add(1)
-		go func() {
+		go func(s *Scraper) {
 			defer wg.Done()
 			var client *http.Client
-			if scraper.Conf.Cookies {
+			if s.Conf.Cookies {
 				client = politeClientWithCookies
 			} else {
 				client = politeClient
 			}
-			scraper.Start(db, client)
-		}()
+			s.Start(db, client)
+		}(scraper)
 	}
 
 	wg.Wait()
+	fmt.Println("Shutdown complete. Exiting.")
 }
 
 func buildScrapers() (map[string]*Scraper, error) {

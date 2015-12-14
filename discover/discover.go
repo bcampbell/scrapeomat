@@ -182,7 +182,9 @@ func NewDiscoverer(cfg DiscovererDef) (*Discoverer, error) {
 	return disc, nil
 }
 
-func (disc *Discoverer) Run(client *http.Client) (LinkSet, error) {
+var ErrQuit = errors.New("quit requested")
+
+func (disc *Discoverer) Run(client *http.Client, quit <-chan struct{}) (LinkSet, error) {
 	// reset stats
 	disc.Stats = DiscoverStats{}
 
@@ -193,6 +195,14 @@ func (disc *Discoverer) Run(client *http.Client) (LinkSet, error) {
 	queued.Add(disc.StartURL)
 
 	for len(queued) > 0 {
+
+		if quit != nil {
+			select {
+			case <-quit:
+				return nil, ErrQuit
+			default:
+			}
+		}
 		pageURL := queued.Pop()
 		seen.Add(pageURL)
 		//
