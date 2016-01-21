@@ -1,8 +1,44 @@
-To create database:
+Postgres notes
+==============
 
-$ sudo -u postgres createuser --no-superuser --no-createrole --createdb scrapeomat
-$ sudo -u postgres createdb -O scrapeomat -E utf8 scrapeomat
-$ sudo -u postgres psql -c "ALTER ROLE scrapeomat WITH PASSWORD 'SooperSecretPassword'"
 
-then load pg/schema.sql
+Permissions setup
+-----------------
+
+Postgresql can be picky on permissions and access.
+You might have your own way of working with it, but if not,
+here are my notes for seting up a development db:
+
+I create a new postgresq user ("scrapeomat"):
+
+    $ sudo -u postgres createuser --no-superuser --no-createrole --createdb scrapeomat
+    $ sudo -u postgres psql -c "ALTER ROLE scrapeomat WITH PASSWORD 'SooperSecretPassword'"
+
+I then set up a pg_ident mapping to allow my usual unix account ("ben")
+to connect as that pg user.
+So, in /etc/postgresql/9.1/main/pg_ident.conf:
+
+    # MAPNAME   SYSTEM-USERNAME    PG-USERNAME
+
+    scrapeomatdev   ben                     scrapeomat
+
+To create database ("scrape_uk":
+
+    $ sudo -u postgres createdb -O scrapeomat -E utf8 scrape_uk
+
+And then set up my new database to use that pg_ident mapping.
+In /etc/postgresql/9.1/main/pg_hba.conf:
+
+    local   scrape_uk       scrapeomat      peer map=scrapeomatdev
+
+
+Reload the postgresql config to make the changes take effect:
+    $ sudo /etc/init.d/postgresql reload
+
+...(or systemctl or whatever...)
+
+
+Then load the base schema:
+
+    $ cat pg/schema.sql | psql -U scrapeomat scrape_ug
 
