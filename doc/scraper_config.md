@@ -11,8 +11,8 @@ navsel
 :   css selector to identify section links
     eg ".navigation-container a"
 
-xnavpats?
-:   css selectors to ignore when looking for section links
+xnavpats
+:   regex, urls to ignore when looking for section links
 
 artpat
 :   treat urls matching this regex as articles
@@ -25,7 +25,11 @@ artform="/SLUG"
     YYYY
     MM
     DD
-    SLUG
+    SLUG   - anything with a hyphen in it, excluding slashes (/)
+             eg moon-made-of-cheese
+             moon-made-of-cheese.html
+             1234-moon-made-of-cheese^1434
+    $      - match end of line
 
 xartform
 :   exclude any article urls matching this

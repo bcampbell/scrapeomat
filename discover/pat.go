@@ -17,8 +17,15 @@ var patReplacer *strings.Replacer = strings.NewReplacer(
 
 // turn a simplified pattern into a regexp
 func patToRegexp(in string) (*regexp.Regexp, error) {
+	suffix := ""
+	// don't want to escape a trailing '$' if it's there....
+	if strings.HasSuffix(in, "$") {
+		in = in[0 : len(in)-1] // assumes single-byte rune...
+		suffix = "$"
+	}
+
 	in = regexp.QuoteMeta(in)
-	in = in + "$"
+	in = in + suffix
 	in = patReplacer.Replace(in)
 
 	return regexp.Compile(in)

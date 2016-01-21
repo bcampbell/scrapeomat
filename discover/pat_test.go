@@ -13,19 +13,32 @@ func TestPatToRegexp(t *testing.T) {
 		noMatch []string
 	}{
 		{
-			pat: "/ID-SLUG",
+			pat: "/ID-SLUG$",
 			match: []string{
 				"/news/space/12345-moon-made-of-cheese",
+				"/news/space/12345-moon-made-of-cheese.html",
 				"/1234-blah-blah"},
-			noMatch: []string{},
+			noMatch: []string{
+				"/1234-wibble-pibble/blah.html"},
 		},
 		{
-			pat: "/YYYY/MM/SLUG.html",
+			pat: "/YYYY/MM/SLUG.html$",
 			match: []string{
 				"/2001/04/moon-made-of-cheese.html",
 			},
 			noMatch: []string{
 				"/2001/04/moon-made-of-cheese",
+				"/2001/04/moon-made-of-cheese.php",
+				"/2001/04/moon-made-of-cheese.html/blah-blah",
+			},
+		},
+		{
+			pat: "/-/SLUG/ID/-/",
+			match: []string{
+				"/-/moon-made-of-cheese/12345/-/index.html",
+			},
+			noMatch: []string{
+				"/-/moon-made-of-cheese/1234",
 			},
 		},
 	}
