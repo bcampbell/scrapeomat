@@ -1,0 +1,16 @@
+# vim: set filetype=sh :
+#
+# basic tab-completion for scrapeomat
+#
+
+_scrapeomat()
+{
+    local cmd="${1##*/}"
+    local cur=${COMP_WORDS[COMP_CWORD]}
+    local scrapers=$($cmd -l)
+
+    COMPREPLY=( $(compgen -W "$scrapers ALL -discover" -- $cur ) );
+}
+
+complete -F _scrapeomat scrapeomat
+
