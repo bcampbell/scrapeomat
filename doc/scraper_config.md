@@ -15,13 +15,18 @@ xnavpats
 :   regex, urls to ignore when looking for section links
 
 artpat
-:   treat urls matching this regex as articles
+:   treat urls matching this regex as articles.
+
+    Multiple artpat (and artform) lines can be used, to
+    show multiple URL forms (a lot of sites use multiple
+    URL schemes)
 
 xartpat
 :   exclude any article urls matching this regex
 
-artform="/SLUG"
-:   ID    number with 4+ digits
+artform
+:   Simplified (non-regexp) pattern matching for URLs.
+    ID    number with 4+ digits
     YYYY
     MM
     DD
@@ -30,6 +35,9 @@ artform="/SLUG"
              moon-made-of-cheese.html
              1234-moon-made-of-cheese^1434
     $      - match end of line
+
+    eg: artform="/SLUG.html$"
+
 
 xartform
 :   exclude any article urls matching this
@@ -43,10 +51,22 @@ baseerrorthreshold
 :   default 5
 
 nostripquery
-:   by default, strip off query part of article urls (eg "?parma=1234")
+:   by default, the query part of article urls is stripped off.
+    eg "www.example.com/news?article=1234" becomes "www.example.com/news"
+
+    Most of the time, the query part is cruft and/or tracking rubbish, but
+    some sites will require it.
+    Add `nostripquery` to turn this behaviour off.
+
 
 cookies
-:   use cookies when making http requests
+:   Retain cookies when making http requests
+    Used mainly for paywalled sites
 
 pubcode
 :   short publication code for this site
+    TODO: add details.
+
+
+
+
