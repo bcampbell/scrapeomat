@@ -100,9 +100,7 @@ func (s *Slurper) Slurp(filt *Filter) (chan Msg, chan struct{}) {
 				// check for cancelation request
 				select {
 				case <-cancel:
-					fmt.Printf("CANCELLLLLSS\n")
 					out <- Msg{Error: "Cancelled"}
-					fmt.Printf("EXXXXIITT\n")
 					return
 				default:
 				}
@@ -132,4 +130,91 @@ func (s *Slurper) Slurp(filt *Filter) (chan Msg, chan struct{}) {
 	}()
 
 	return out, cancel
+}
+
+func (s *Slurper) Slurp2(filt *Filter) *ArtStream {
+	client := s.Client
+	if client == nil {
+		client = &http.Client{}
+	}
+
+	params := url.Values{}
+
+	if !filt.PubFrom.IsZero() {
+		params.Set("pubfrom", filt.PubFrom.Format(time.RFC3339))
+	}
+	if !filt.PubTo.IsZero() {
+		params.Set("pubto", filt.PubTo.Format(time.RFC3339))
+	}
+	for _, pubCode := range filt.PubCodes {
+		params.Add("pub", pubCode)
+	}
+
+	if filt.SinceID > 0 {
+		params.Set("since_id", strconv.Itoa(filt.SinceID))
+	}
+	if filt.Count > 0 {
+		params.Set("count", strconv.Itoa(filt.Count))
+	}
+	u := s.Location + "/api/slurp?" + params.Encode()
+
+	out := &ArtStream{}
+	// fmt.Printf("request: %s\n", u)
+	resp, err := client.Get(u)
+	if err != nil {
+		out.err = fmt.Errorf("HTTP Get failed: %s", err)
+		return out
+	}
+	out.response = resp
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		out.err = fmt.Errorf("HTTP Error code %s", resp.Status)
+		return out
+	}
+
+	out.dec = json.NewDecoder(out.response.Body)
+	return out
+}
+
+type ArtStream struct {
+	response *http.Response
+	dec      *json.Decoder
+	err      error
+
+	// if there are more articles to grab, this will be set to non-zero when the stream ends
+	NextSinceID int
+}
+
+func (as *ArtStream) Close() {
+	if as.response != nil {
+		as.response.Body.Close()
+		as.response = nil
+	}
+}
+
+// returns io.EOF at end of stream
+func (as *ArtStream) Next() (*Article, error) {
+	if as.err != nil {
+		return nil, as.err
+	}
+	for {
+		// grab the next message off the wire
+		var msg Msg
+		err := as.dec.Decode(&msg)
+		if err == io.EOF {
+			as.err = err
+			return nil, err
+		} else if err != nil {
+			as.err = fmt.Errorf("Decode error: %s", err)
+			return nil, as.err
+		}
+
+		// is it a to-be-continued message?
+		if msg.Next.SinceID > 0 {
+			as.NextSinceID = msg.Next.SinceID
+			// probably that'll be the end of the stream, but loop until we hit the EOF anyway
+		} else {
+			return msg.Article, nil
+		}
+	}
 }
