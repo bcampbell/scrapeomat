@@ -21,6 +21,10 @@ artpat
     show multiple URL forms (a lot of sites use multiple
     URL schemes)
 
+    The URLs filtered by artpat (and artform) already have their
+    query and fragment parts stripped, unless nostripquery or
+    nostripfragment are also set.
+
 xartpat
 :   exclude any article urls matching this regex
 
