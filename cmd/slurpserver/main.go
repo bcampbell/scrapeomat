@@ -15,12 +15,14 @@ var opts struct {
 	dbURL     string
 	port      int
 	prefix    string
+	browse    bool
 }
 
 func main() {
 	//	flag.IntVar(&opts.verbosity, "v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
 	flag.StringVar(&opts.dbURL, "db", "", "database connection string (eg postgres://user:password@localhost/scrapeomat) or set $SCRAPEOMAT_DB")
 	flag.StringVar(&opts.prefix, "prefix", "", `url prefix (eg "/ukarticles") to allow multiple servers on same port`)
+	flag.BoolVar(&opts.browse, "browse", false, `enable html browsing of articles`)
 	flag.IntVar(&opts.port, "port", 12345, "port to run server on")
 	flag.IntVar(&opts.verbosity, "v", 0, "verbosity (0=errors only, 1=info, 2=debug)")
 	flag.Parse()
@@ -56,7 +58,7 @@ func main() {
 	}
 
 	// run server
-	srv, err := NewServer(db, opts.port, opts.prefix, infoLog, errLog)
+	srv, err := NewServer(db, opts.browse, opts.port, opts.prefix, infoLog, errLog)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)

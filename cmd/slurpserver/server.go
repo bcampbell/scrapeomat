@@ -7,7 +7,6 @@ import (
 	"html/template"
 	"net/http"
 	"semprini/scrapeomat/store"
-	"strconv"
 	"time"
 )
 
@@ -26,43 +25,15 @@ type SlurpServer struct {
 	Port    int
 	Prefix  string
 
-	db *store.Store
-
-	tmpls struct {
+	db           *store.Store
+	enableBrowse bool
+	tmpls        struct {
 		browse *template.Template
 	}
 }
 
-func NewServer(db *store.Store, port int, prefix string, infoLog Logger, errLog Logger) (*SlurpServer, error) {
-	srv := &SlurpServer{db: db, Port: port, Prefix: prefix, InfoLog: infoLog, ErrLog: errLog}
-
-	var baseTmpl string = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>scrapeomat</title>
-  </head>
-<body>
-<header class="site-header">
-</header>
-{{ template "body" . }}
-</body>
-</html>
-`
-
-	var browseTmpl string = `
-{{define "body"}}
-  <table>
-    {{range .Arts}}
-    <tr>
-        <td>{{.Headline}}</td>
-        <td>{{.CanonicalURL}}</td>
-        <td>{{.Published}}</td>
-    </tr>
-    {{end}}
-  </table>
-{{end}}
-`
+func NewServer(db *store.Store, enableBrowse bool, port int, prefix string, infoLog Logger, errLog Logger) (*SlurpServer, error) {
+	srv := &SlurpServer{db: db, enableBrowse: enableBrowse, Port: port, Prefix: prefix, InfoLog: infoLog, ErrLog: errLog}
 
 	t := template.New("browse")
 	t.Parse(baseTmpl)
@@ -95,12 +66,12 @@ func (srv *SlurpServer) Run() error {
 	http.HandleFunc(srv.Prefix+"/api/count", func(w http.ResponseWriter, r *http.Request) {
 		srv.countHandler(&Context{}, w, r)
 	})
-	/*
+
+	if srv.enableBrowse {
 		http.HandleFunc(srv.Prefix+"/browse", func(w http.ResponseWriter, r *http.Request) {
 			srv.browseHandler(&Context{}, w, r)
 		})
-	*/
-
+	}
 	srv.InfoLog.Printf("Started at localhost:%d%s/\n", srv.Port, srv.Prefix)
 	return http.ListenAndServe(fmt.Sprintf(":%d", srv.Port), nil)
 }
@@ -121,105 +92,6 @@ type Msg struct {
 			Total int
 		} `json:"info,omitempty"`
 	*/
-}
-
-func parseTime(in string) (time.Time, error) {
-
-	t, err := time.ParseInLocation(time.RFC3339, in, time.UTC)
-	if err == nil {
-		return t, nil
-	}
-
-	// short form - assumes you want utc days rather than local days...
-	const dateOnlyFmt = "2006-01-02"
-	t, err = time.ParseInLocation(dateOnlyFmt, in, time.UTC)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid date/time format")
-	}
-
-	return t, nil
-
-}
-
-func getFilter(r *http.Request) (*store.Filter, error) {
-	maxCount := 20000
-
-	filt := &store.Filter{}
-
-	// deprecated!
-	if r.FormValue("from") != "" {
-		t, err := parseTime(r.FormValue("from"))
-		if err != nil {
-			return nil, fmt.Errorf("bad 'from' param")
-		}
-
-		filt.PubFrom = t
-	}
-
-	// deprecated!
-	if r.FormValue("to") != "" {
-		t, err := parseTime(r.FormValue("to"))
-		if err != nil {
-			return nil, fmt.Errorf("bad 'to' param")
-		}
-		t = t.AddDate(0, 0, 1) // add one day
-		filt.PubTo = t
-	}
-
-	if r.FormValue("pubfrom") != "" {
-		t, err := parseTime(r.FormValue("pubfrom"))
-		if err != nil {
-			return nil, fmt.Errorf("bad 'pubfrom' param")
-		}
-
-		filt.PubFrom = t
-	}
-	if r.FormValue("pubto") != "" {
-		t, err := parseTime(r.FormValue("pubto"))
-		if err != nil {
-			return nil, fmt.Errorf("bad 'pubto' param")
-		}
-
-		filt.PubTo = t
-	}
-
-	if r.FormValue("since_id") != "" {
-		sinceID, err := strconv.Atoi(r.FormValue("since_id"))
-		if err != nil {
-			return nil, fmt.Errorf("bad 'since_id' param")
-		}
-		if sinceID > 0 {
-			filt.SinceID = sinceID
-		}
-	}
-
-	if r.FormValue("count") != "" {
-		cnt, err := strconv.Atoi(r.FormValue("count"))
-		if err != nil {
-			return nil, fmt.Errorf("bad 'count' param")
-		}
-		filt.Count = cnt
-	} else {
-		// default to max
-		filt.Count = maxCount
-	}
-
-	// enforce max count
-	if filt.Count > maxCount {
-		return nil, fmt.Errorf("'count' too high (max %d)", maxCount)
-	}
-
-	// publication codes?
-	if pubs, got := r.Form["pub"]; got {
-		filt.PubCodes = pubs
-	}
-
-	// publication codes to exclude?
-	if xpubs, got := r.Form["xpub"]; got {
-		filt.XPubCodes = xpubs
-	}
-
-	return filt, nil
 }
 
 // implement the main article slurp API
@@ -314,50 +186,6 @@ func (srv *SlurpServer) performSlurp(w http.ResponseWriter, filt *store.Filter) 
 	}
 
 	return nil, artCnt, byteCnt
-}
-
-func (srv *SlurpServer) browseHandler(ctx *Context, w http.ResponseWriter, r *http.Request) {
-	filt, err := getFilter(r)
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-
-	filt.Count = 100
-
-	totalArts, err := srv.db.FetchCount(filt)
-	if err != nil {
-		// TODO: should send error via json
-		http.Error(w, fmt.Sprintf("DB error: %s", err), 500)
-		return
-	}
-	srv.InfoLog.Printf("%d articles to send\n", totalArts)
-
-	c, _ := srv.db.Fetch(filt)
-	arts := make([]*store.Article, 0)
-	for fetched := range c {
-		if fetched.Err != nil {
-			http.Error(w, fmt.Sprintf("Fetch error: %s", fetched.Err), 500)
-			return
-		}
-
-		arts = append(arts, fetched.Art)
-	}
-	/*
-		for _, art := range arts {
-			fmt.Println(art.Headline)
-		}
-	*/
-	params := struct {
-		Arts []*store.Article
-	}{
-		arts,
-	}
-	err = srv.tmpls.browse.Execute(w, params)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("template error: %s", err), 500)
-		return
-	}
 }
 
 // implement the publication list API
