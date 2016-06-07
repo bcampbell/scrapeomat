@@ -19,16 +19,19 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"flag"
 	"fmt"
 	"github.com/bcampbell/arts/arts"
 	"github.com/bcampbell/warc/warc"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"semprini/scrapeomat/store"
+	"strings"
 	"sync"
 )
 
@@ -55,24 +58,28 @@ func process(db *store.Store, f string) {
 
 	//	fmt.Println(art.Published)
 
-	artID, err := db.FindArticle(art.URLs)
+	artIDs, err := db.FindURLs(art.URLs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: FindArticle() FAILED: %s\n", f, err)
 		return
 	}
 
-	alreadyGot := (artID != 0)
+	if len(artIDs) > 1 {
+		fmt.Fprintf(os.Stderr, "%s: multiple articles matching IDs: %v\n", art.URLs, artIDs)
+	}
+
+	alreadyGot := (len(artIDs) > 0)
 	if alreadyGot && !opts.forceReplace {
-		fmt.Fprintf(os.Stderr, "got %s already\n", art.URLs[0])
+		fmt.Fprintf(os.Stderr, "got %s already (id %d)\n", art.URLs[0], artIDs)
 		return
 	}
 
 	if alreadyGot {
 		// force replacement!
-		art.ID = artID
+		art.ID = artIDs[0]
 	}
 
-	artID, err = db.Stash(art)
+	artID, err := db.Stash(art)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s stash FAILED: %s\n", f, err)
 		return
@@ -84,7 +91,7 @@ func process(db *store.Store, f string) {
 	}
 }
 
-func findWarcFiles(start string) []string {
+func findWarcFiles(start string) ([]string, error) {
 	files := []string{}
 	err := filepath.Walk(start, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -94,18 +101,15 @@ func findWarcFiles(start string) []string {
 		if info.IsDir() {
 			return nil
 		}
-		if filepath.Ext(path) != ".warc" {
-			return nil
+
+		if strings.HasSuffix(path, ".warc") || strings.HasSuffix(path, ".warc.gz") {
+			files = append(files, path)
 		}
 
-		files = append(files, path)
 		return nil
 	})
 
-	if err != nil {
-		panic(err)
-	}
-	return files
+	return files, err
 }
 
 var opts struct {
@@ -130,10 +134,20 @@ func openStore(connStr string) (*store.Store, error) {
 }
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: rescrape [options] <path-to-warc-files>\n")
+		flag.PrintDefaults()
+		os.Exit(2)
+	}
 
-	flag.StringVar(&opts.databaseURL, "db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	flag.StringVar(&opts.databaseURL, "db", "", "database connection `string` (eg postgres://scrapeomat:password@localhost/scrapeomat)")
 	flag.BoolVar(&opts.forceReplace, "f", false, "force replacement of articles already in db")
 	flag.Parse()
+
+	if flag.NArg() < 1 {
+		fmt.Fprintf(os.Stderr, "ERROR: missing <path-to-warc-files>\n")
+		os.Exit(1)
+	}
 
 	db, err := openStore(opts.databaseURL)
 	if err != nil {
@@ -145,9 +159,13 @@ func main() {
 	var wg sync.WaitGroup
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	fmt.Printf("MAXPROCS=%d dir=%s\n", runtime.GOMAXPROCS(0), flag.Arg(0))
 
-	files := findWarcFiles(flag.Arg(0))
+	files, err := findWarcFiles(flag.Arg(0))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR while finding .warc files: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("MAXPROCS=%d dir=%s %d files\n", runtime.GOMAXPROCS(0), flag.Arg(0), len(files))
 
 	//files := flag.Args()
 
@@ -169,11 +187,23 @@ func main() {
 
 // TODO: this is from arts/scrapetool. Make sure to replicate any improvements there.
 func fromWARC(filename string) (*arts.Article, error) {
-	in, err := os.Open(filename)
+	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
-	defer in.Close()
+	defer f.Close()
+
+	var in io.Reader
+	if filepath.Ext(filename) == ".gz" {
+		gin, err := gzip.NewReader(f)
+		if err != nil {
+			return nil, err
+		}
+		defer gin.Close()
+		in = gin
+	} else {
+		in = f
+	}
 
 	warcReader := warc.NewReader(in)
 	for {

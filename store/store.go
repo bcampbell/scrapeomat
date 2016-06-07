@@ -300,6 +300,43 @@ func (store *Store) FindArticle(artURLs []string) (int, error) {
 }
 */
 
+// FindURLs Looks up article urls, returning a list of matching article IDs.
+// usually you'd use this on the URLs for a single article, expecting zero or one IDs back,
+// but there's no reason you can't look up a whole bunch of articles at once, although you won't
+// know which ones match which URLs.
+// remember that there can be multiple URLs for a single article, AND also multiple articles can
+// share the same URL (hopefully much much more rare).
+func (store *Store) FindURLs(urls []string) ([]int, error) {
+
+	params := make([]interface{}, len(urls))
+	placeholders := make([]string, len(urls))
+	for i, u := range urls {
+		params[i] = u
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+
+	s := `SELECT distinct article_id FROM article_url WHERE url IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := store.db.Query(s, params...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []int{}
+	for rows.Next() {
+		var artID int
+		if err := rows.Scan(&artID); err != nil {
+			return nil, err
+		}
+
+		out = append(out, artID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NOTE: remember article urls don't _have_ to be unique. If you only pass
 // canonical urls in here you should be ok :-)
 func (store *Store) WhichAreNew(artURLs []string) ([]string, error) {
