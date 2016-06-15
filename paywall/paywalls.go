@@ -22,8 +22,6 @@ func GetLogin(site string) LoginFunc {
 
 var paywallLogins = map[string]LoginFunc{
 	//	"telegraph.co.uk":      LoginTelegraph,
-	"thesun":      LoginSun,
-	"scottishsun": LoginSun, // Sun login works here too
 	"thetimes":    LoginTimes,
 	"sundaytimes": LoginSundayTimes,
 	"ft":          LoginFT,
@@ -68,27 +66,6 @@ func LoginTelegraph(c *http.Client) error {
 	}
 
 	return nil
-}
-
-func LoginSun(c *http.Client) error {
-
-	conf := struct {
-		TheSun struct {
-			Username string
-			Password string
-		}
-	}{}
-	err := gcfg.ReadFileInto(&conf, "paywalls/thesun.gcfg")
-	if err != nil {
-		return err
-	}
-
-	details := &conf.TheSun
-
-	loginURL := "https://login.thesun.co.uk/"
-	successHost := "www.thesun.co.uk"
-	failureHost := "login.thesun.co.uk"
-	return LoginNI(c, loginURL, successHost, failureHost, details.Username, details.Password)
 }
 
 func LoginTimes(c *http.Client) error {
