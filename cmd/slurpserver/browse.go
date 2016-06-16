@@ -8,52 +8,10 @@ import (
 	"semprini/scrapeomat/store"
 )
 
-var baseTmpl string = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>scrapeomat</title>
-  </head>
-<body>
-<header class="site-header">
-</header>
-{{ template "body" . }}
-</body>
-</html>
-`
+func (srv *SlurpServer) browseHandler(w http.ResponseWriter, r *http.Request) {
 
-var browseTmpl string = `
-{{define "body"}}
-<form action="" method="GET">
-  <label for="pubfrom" >PubFrom:</label>
-  <input id="pubfrom" name="pubfrom" type="date" value="{{.Filt.PubFromString}}" />
-  <label for="pubto" >PubTo:</label>
-  <input id="pubto" name="pubto" type="date" value="{{.Filt.PubToString}}" />
-  <select id="pub" name="pub" multiple>
-    {{ $f := .Filt}}
-    {{ range .Pubs }}
-    <option value="{{.Code}}"{{if $f.IsPubSet .Code}} selected{{end}}>{{.Code}}</option>
-    {{end}}
-  </select>
-<input type="submit" value="submit" />
-</form>
-  <table>
-    {{range .Arts}}
-    <tr>
-        <td>{{.ID}}</td>
-        <td><a href="{{.CanonicalURL}}">{{.Headline}}</td>
-        <td>{{.Publication.Code}}</td>
-        <td>{{.Published}}</td>
-        <td>{{range .Authors}}{{.Name}}, {{end}}</td>
-    </tr>
-    {{end}}
-  </table>
-  <a href="{{.MoreURL}}">more...</a>
+	ctx := &Context{Prefix: srv.Prefix}
 
-{{end}}
-`
-
-func (srv *SlurpServer) browseHandler(ctx *Context, w http.ResponseWriter, r *http.Request) {
 	filt, err := getFilter(r)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
@@ -93,11 +51,13 @@ func (srv *SlurpServer) browseHandler(ctx *Context, w http.ResponseWriter, r *ht
 	nextFilt.Count = 0
 
 	params := struct {
+		Ctx     *Context
 		Filt    *Filter
 		Pubs    []store.Publication
 		Arts    []*store.Article
 		MoreURL template.URL
 	}{
+		ctx,
 		(*Filter)(filt),
 		pubs,
 		arts,

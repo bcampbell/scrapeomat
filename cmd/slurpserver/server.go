@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/gorilla/handlers"
 	"html/template"
 	"net/http"
@@ -35,16 +36,18 @@ type SlurpServer struct {
 func NewServer(db *store.Store, enableBrowse bool, port int, prefix string, infoLog Logger, errLog Logger) (*SlurpServer, error) {
 	srv := &SlurpServer{db: db, enableBrowse: enableBrowse, Port: port, Prefix: prefix, InfoLog: infoLog, ErrLog: errLog}
 
-	t := template.New("browse")
-	t.Parse(baseTmpl)
+	baseTmpl := string(MustAsset("templates/base.html"))
+	browseTmpl := string(MustAsset("templates/browse.html"))
+
+	t := template.New("browse.html")
 	t.Parse(browseTmpl)
+	t.Parse(baseTmpl)
 	srv.tmpls.browse = t
 
 	return srv, nil
 }
 
 func (srv *SlurpServer) Run() error {
-
 	http.Handle(srv.Prefix+"/api/slurp", handlers.CompressHandler(
 		http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
@@ -69,15 +72,23 @@ func (srv *SlurpServer) Run() error {
 
 	if srv.enableBrowse {
 		http.HandleFunc(srv.Prefix+"/browse", func(w http.ResponseWriter, r *http.Request) {
-			srv.browseHandler(&Context{}, w, r)
+			srv.browseHandler(w, r)
 		})
+
+		// serve up stuff in /static
+		http.Handle(srv.Prefix+"/static/",
+			http.StripPrefix(srv.Prefix+"/static/",
+				http.FileServer(
+					&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, AssetInfo: AssetInfo, Prefix: "static"})))
 	}
+
 	srv.InfoLog.Printf("Started at localhost:%d%s/\n", srv.Port, srv.Prefix)
 	return http.ListenAndServe(fmt.Sprintf(":%d", srv.Port), nil)
 }
 
 // for auth etc... one day.
 type Context struct {
+	Prefix string
 }
 
 type Msg struct {

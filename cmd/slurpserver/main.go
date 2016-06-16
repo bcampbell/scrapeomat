@@ -1,5 +1,7 @@
 package main
 
+//go:generate go-bindata templates static
+
 // run server to provide API and web interface upon a scrapeomat database
 
 import (

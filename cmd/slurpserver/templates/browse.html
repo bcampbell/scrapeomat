@@ -1,0 +1,39 @@
+{{define "body"}}
+<form action="" method="GET">
+  <label for="pubfrom" >PubFrom:</label>
+  <input id="pubfrom" name="pubfrom" type="date" value="{{.Filt.PubFromString}}" />
+  <label for="pubto" >PubTo:</label>
+  <input id="pubto" name="pubto" type="date" value="{{.Filt.PubToString}}" />
+  <select id="pub" name="pub" multiple>
+    {{ $f := .Filt}}
+    {{ range .Pubs }}
+    <option value="{{.Code}}"{{if $f.IsPubSet .Code}} selected{{end}}>{{.Code}}</option>
+    {{end}}
+  </select>
+<input type="submit" value="submit" />
+</form>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Headline</th>
+        <th>PubCode</th>
+        <th>Published</th>
+        <th>Authors</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .Arts}}
+    <tr>
+        <td>{{.ID}}</td>
+        <td><a href="{{.CanonicalURL}}">{{.Headline}}</td>
+        <td>{{.Publication.Code}}</td>
+        <td>{{.Published}}</td>
+        <td>{{range .Authors}}{{.Name}}, {{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  <a href="{{.MoreURL}}">more...</a>
+
+{{end}}
