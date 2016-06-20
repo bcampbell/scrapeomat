@@ -8,11 +8,16 @@ import (
 	"html/template"
 	"net/http"
 	"semprini/scrapeomat/store"
-	"time"
+	//"time"
 )
 
 type Logger interface {
 	Printf(format string, v ...interface{})
+}
+
+func EmitError(w http.ResponseWriter, statusCode int) {
+	txt := fmt.Sprintf("%d - %s", statusCode, http.StatusText(statusCode))
+	http.Error(w, txt, statusCode)
 }
 
 type nullLogger struct{}
@@ -110,7 +115,7 @@ func (srv *SlurpServer) slurpHandler(ctx *Context, w http.ResponseWriter, r *htt
 
 	filt, err := getFilter(r)
 	if err != nil {
-		http.Error(w, err.Error(), 400)
+		EmitError(w, 400)
 		return
 	}
 
@@ -204,7 +209,8 @@ func (srv *SlurpServer) pubsHandler(ctx *Context, w http.ResponseWriter, r *http
 
 	pubs, err := srv.db.FetchPublications()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("DB error: %s", err), 500)
+		srv.ErrLog.Printf("/pubs DB Error: %s\n", err)
+		EmitError(w, 500)
 		return
 	}
 
@@ -216,7 +222,8 @@ func (srv *SlurpServer) pubsHandler(ctx *Context, w http.ResponseWriter, r *http
 
 	outBuf, err := json.Marshal(out)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("json encoding error: %s", err), 500)
+		srv.ErrLog.Printf("/pubs json encoding error: %s\n", err)
+		EmitError(w, 500)
 		return
 	}
 	_, err = w.Write(outBuf)
@@ -230,37 +237,21 @@ func (srv *SlurpServer) pubsHandler(ctx *Context, w http.ResponseWriter, r *http
 
 // implement the summary API
 func (srv *SlurpServer) summaryHandler(ctx *Context, w http.ResponseWriter, r *http.Request) {
-
-	var from, to time.Time
-	var err error
-
-	var argErr error
-
-	if r.FormValue("from") != "" {
-		from, err = parseTime(r.FormValue("from"))
-		if err != nil {
-			argErr = fmt.Errorf("bad 'from' param")
-		}
-	} else {
-		argErr = fmt.Errorf("missing 'from' param")
-	}
-
-	if r.FormValue("to") != "" {
-		to, err = parseTime(r.FormValue("to"))
-		if err != nil {
-			argErr = fmt.Errorf("bad 'to' param")
-		}
-	} else {
-		argErr = fmt.Errorf("missing 'to' param")
-	}
-
-	if argErr != nil {
-		srv.ErrLog.Printf("ERR: %s\n", argErr)
-		http.Error(w, argErr.Error(), 400)
+	filt, err := getFilter(r)
+	if err != nil {
+		srv.ErrLog.Printf("/summary bad params: %s\n", err)
+		EmitError(w, 400)
 		return
 	}
 
-	rawCounts, err := srv.db.FetchSummary(from, to)
+	rawCounts, err := srv.db.FetchSummary(filt, "published")
+	if err != nil {
+		srv.ErrLog.Printf("/summary DB error: %s\n", err)
+		EmitError(w, 500)
+		return
+	}
+
+	srv.InfoLog.Printf("%d summary counts\n", len(rawCounts))
 
 	cooked := make(map[string]map[string]int)
 
@@ -270,7 +261,10 @@ func (srv *SlurpServer) summaryHandler(ctx *Context, w http.ResponseWriter, r *h
 			mm = make(map[string]int)
 			cooked[raw.PubCode] = mm
 		}
-		day := raw.Date.Format("2006-01-02")
+		var day string
+		if raw.Date.Valid {
+			day = raw.Date.Time.Format("2006-01-02")
+		}
 		mm[day] = raw.Count
 	}
 
@@ -282,7 +276,8 @@ func (srv *SlurpServer) summaryHandler(ctx *Context, w http.ResponseWriter, r *h
 
 	outBuf, err := json.Marshal(out)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("json encoding error: %s", err), 500)
+		srv.ErrLog.Printf("/summary json encoding error: %s\n", err)
+		EmitError(w, 500)
 		return
 	}
 	_, err = w.Write(outBuf)

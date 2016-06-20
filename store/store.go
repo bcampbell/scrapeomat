@@ -668,19 +668,35 @@ func (store *Store) FetchPublications() ([]Publication, error) {
 }
 
 type DatePubCount struct {
-	Date    time.Time
+	Date    pq.NullTime
 	PubCode string
 	Count   int
 }
 
-func (store *Store) FetchSummary(dateFrom, dateTo time.Time) ([]DatePubCount, error) {
-	q := `SELECT CAST(a.published AS DATE) AS day, p.code, COUNT(*)
-    FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
-    WHERE a.published>=$1 AND a.published<=$2
-    GROUP BY day, p.code
-    ORDER BY day ASC ,p.code ASC;`
+func (store *Store) FetchSummary(filt *Filter, group string) ([]DatePubCount, error) {
+	whereClause, params := buildWhere(filt).Render(1, " AND ")
+	if whereClause != "" {
+		whereClause = "WHERE " + whereClause
+	}
 
-	rows, err := store.db.Query(q, dateFrom, dateTo)
+	var dayField string
+	switch group {
+	case "published":
+		dayField = "a.published"
+	case "added":
+		dayField = "a.Added"
+	default:
+		return nil, fmt.Errorf("Bad group field (%s)", group)
+	}
+
+	q := `SELECT CAST( ` + dayField + ` AS DATE) AS day, p.code, COUNT(*)
+	    FROM (article a INNER JOIN publication p ON a.publication_id=p.id) ` +
+		whereClause + ` GROUP BY day, p.code ORDER BY day ASC ,p.code ASC;`
+
+	store.DebugLog.Printf("summary: %s\n", q)
+	store.DebugLog.Printf("summary params: %+v\n", params)
+
+	rows, err := store.db.Query(q, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -696,6 +712,8 @@ func (store *Store) FetchSummary(dateFrom, dateTo time.Time) ([]DatePubCount, er
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
+	store.DebugLog.Printf("summary out: %d\n", len(out))
 	return out, nil
 
 }
