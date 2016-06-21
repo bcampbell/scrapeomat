@@ -3,20 +3,31 @@ package main
 import (
 	"flag"
 	"fmt"
+	"golang.org/x/crypto/ssh/terminal"
 	"os"
 	"semprini/scrapeomat/slurp"
+	"strings"
 	"time"
 )
 
 var opts struct {
-	server   string
-	from, to string
+	server    string
+	from, to  string
+	pubs      pubArgs
+	termWidth int
 }
+
+type pubArgs []string
+
+func (p *pubArgs) String() string         { return fmt.Sprintf("%s", *p) }
+func (p *pubArgs) Set(value string) error { *p = append(*p, value); return nil }
 
 func init() {
 	flag.StringVar(&opts.from, "from", "", "from date")
 	flag.StringVar(&opts.to, "to", "", "to date")
-	flag.StringVar(&opts.server, "s", "localhost:13568", "API server to query")
+	flag.IntVar(&opts.termWidth, "w", 0, "output width (0=auto)")
+	flag.StringVar(&opts.server, "s", "http://localhost:12345", "API server to query")
+	flag.Var(&opts.pubs, "p", "publication code(s)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]\n", os.Args[0])
@@ -28,43 +39,84 @@ func main() {
 
 	flag.Parse()
 
-	from, err := time.Parse("2006-01-02", opts.from)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Bad from: %s\n", err)
-		os.Exit(2)
+	if opts.termWidth == 0 {
+		var err error
+		opts.termWidth, err = detectTermWidth()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR detecting terminal width: %s\n", err)
+			os.Exit(2)
+		}
 	}
-	to, err := time.Parse("2006-01-02", opts.to)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Bad to: %s\n", err)
-		os.Exit(2)
+
+	filt := slurp.Filter{}
+
+	if opts.from != "" {
+		from, err := time.Parse("2006-01-02", opts.from)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Bad from: %s\n", err)
+			os.Exit(2)
+		}
+		filt.PubFrom = from
 	}
+
+	if opts.to != "" {
+		to, err := time.Parse("2006-01-02", opts.to)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Bad to: %s\n", err)
+			os.Exit(2)
+		}
+		filt.PubTo = to
+	}
+
+	filt.PubCodes = opts.pubs
+
 	slurper := slurp.NewSlurper(opts.server)
 
-	raw, err := slurper.Summary(from, to)
+	raw, err := slurper.Summary(&filt)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(2)
 	}
 
-	cooked := slurp.CookSummary(raw, opts.from, opts.to)
+	cooked := slurp.CookSummary(raw)
 
-	dump(cooked)
+	dump(cooked, opts.termWidth)
 }
 
-func dump(cooked *slurp.CookedSummary) {
-
-	fmt.Printf("           ")
-	for _, day := range cooked.Days {
-		fmt.Printf("%10s ", day)
+func detectTermWidth() (int, error) {
+	fd := int(os.Stdout.Fd())
+	if !terminal.IsTerminal(fd) {
+		return 0, fmt.Errorf("Not a terminal")
 	}
-	fmt.Printf("\n")
+	w, _, err := terminal.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 0, err
+	}
+	return w, nil
+}
+
+func weekday(day string) string {
+	t, _ := time.Parse("2006-01-02", day)
+	return t.Weekday().String()[:1]
+}
+
+func dump(cooked *slurp.CookedSummary, termW int) {
+
+	numReserve := len(fmt.Sprintf("%d", cooked.Max))
+
+	w := termW - (1 + 1 + 10 + 1 + numReserve + 1 + 1)
 
 	for i, pubCode := range cooked.PubCodes {
-		fmt.Printf("%10s ", pubCode)
 		dat := cooked.Data[i]
-		for _, cnt := range dat {
-			fmt.Printf("%10d ", cnt)
+		fmt.Printf("%s\n", pubCode)
+		for j, cnt := range dat {
+			n := (cnt * 1024) / cooked.Max
+			n = (n * w) / 1024
+			day := cooked.Days[j]
+			bar := strings.Repeat("*", n)
+			wd := weekday(day)
+			fmt.Printf("%s %10s %*d %s\n", wd, day, numReserve, cnt, bar)
 		}
 		fmt.Printf("\n")
 	}

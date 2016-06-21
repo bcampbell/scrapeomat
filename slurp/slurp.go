@@ -41,15 +41,7 @@ type Filter struct {
 	Count    int
 }
 
-// Slurp downloads a set of articles from the server
-// returns a channel which streams out messages.
-// errors are returned via Msg. In the case of network errors,
-// Slurp may synthesise fake Msgs containing the error message.
-// Will repeatedly request until all results returned.
-// filter count param is not the total - it is the max articles to
-// return per request.
-func (s *Slurper) Slurp(filt *Filter) (chan Msg, chan struct{}) {
-
+func (filt *Filter) params() url.Values {
 	params := url.Values{}
 
 	if !filt.PubFrom.IsZero() {
@@ -68,6 +60,21 @@ func (s *Slurper) Slurp(filt *Filter) (chan Msg, chan struct{}) {
 	if filt.Count > 0 {
 		params.Set("count", strconv.Itoa(filt.Count))
 	}
+	return params
+}
+
+// !!! DEPRECATED !!!
+// Slurp downloads a set of articles from the server
+// returns a channel which streams out messages.
+// errors are returned via Msg. In the case of network errors,
+// Slurp may synthesise fake Msgs containing the error message.
+// Will repeatedly request until all results returned.
+// filter count param is not the total - it is the max articles to
+// return per request.
+// !!! DEPRECATED !!!
+func (s *Slurper) Slurp(filt *Filter) (chan Msg, chan struct{}) {
+
+	params := filt.params()
 
 	out := make(chan Msg)
 	cancel := make(chan struct{}, 1) // buffered to prevent deadlock
@@ -138,24 +145,8 @@ func (s *Slurper) Slurp2(filt *Filter) *ArtStream {
 		client = &http.Client{}
 	}
 
-	params := url.Values{}
+	params := filt.params()
 
-	if !filt.PubFrom.IsZero() {
-		params.Set("pubfrom", filt.PubFrom.Format(time.RFC3339))
-	}
-	if !filt.PubTo.IsZero() {
-		params.Set("pubto", filt.PubTo.Format(time.RFC3339))
-	}
-	for _, pubCode := range filt.PubCodes {
-		params.Add("pub", pubCode)
-	}
-
-	if filt.SinceID > 0 {
-		params.Set("since_id", strconv.Itoa(filt.SinceID))
-	}
-	if filt.Count > 0 {
-		params.Set("count", strconv.Itoa(filt.Count))
-	}
 	u := s.Location + "/api/slurp?" + params.Encode()
 
 	out := &ArtStream{}
