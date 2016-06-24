@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"semprini/scrapeomat/arc"
 	"semprini/scrapeomat/discover"
@@ -194,17 +193,14 @@ func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Cl
 		defer scraper.infoLog.Printf("finished in %s (%d new articles, %d errors)\n", elapsed, stats.StashCount, stats.ErrorCount)
 	}()
 
+	// use base url from the discovery config
+	baseURL := scraper.discoverer.StartURL
+
 	// process/reject urls using site rules
 	cookedArts := []string{}
 	rejectCnt := 0
 	for _, artURL := range arts {
-		baseURL, err := url.Parse(artURL)
-		if err != nil {
-			scraper.errorLog.Printf("%s\n", err)
-			rejectCnt++
-			continue
-		}
-		cooked, err := scraper.discoverer.CookArticleURL(baseURL, artURL)
+		cooked, err := scraper.discoverer.CookArticleURL(&baseURL, artURL)
 		if err != nil {
 			scraper.infoLog.Printf("Reject %s (%s)\n", artURL, err)
 			rejectCnt++
