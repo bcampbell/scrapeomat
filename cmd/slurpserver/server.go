@@ -53,27 +53,39 @@ func NewServer(db *store.Store, enableBrowse bool, port int, prefix string, info
 }
 
 func (srv *SlurpServer) Run() error {
-	http.Handle(srv.Prefix+"/api/slurp", handlers.CompressHandler(
-		http.HandlerFunc(
+
+	// add middleware for compressing response, and for
+	// observing Forwarded/X-Fowarded headers to get
+	// real client IP address
+	wrap := func(f http.HandlerFunc) http.Handler {
+		return handlers.ProxyHeaders(
+			handlers.CompressHandler(
+				http.HandlerFunc(f)))
+	}
+
+	http.Handle(srv.Prefix+"/api/slurp",
+		wrap(
 			func(w http.ResponseWriter, r *http.Request) {
 				srv.slurpHandler(&Context{}, w, r)
-			})))
+			}))
 
-	http.Handle(srv.Prefix+"/api/pubs", handlers.CompressHandler(
-		http.HandlerFunc(
+	http.Handle(srv.Prefix+"/api/pubs",
+		wrap(
 			func(w http.ResponseWriter, r *http.Request) {
 				srv.pubsHandler(&Context{}, w, r)
-			})))
+			}))
 
-	http.Handle(srv.Prefix+"/api/summary", handlers.CompressHandler(
-		http.HandlerFunc(
+	http.Handle(srv.Prefix+"/api/summary",
+		wrap(
 			func(w http.ResponseWriter, r *http.Request) {
 				srv.summaryHandler(&Context{}, w, r)
-			})))
+			}))
 
-	http.HandleFunc(srv.Prefix+"/api/count", func(w http.ResponseWriter, r *http.Request) {
-		srv.countHandler(&Context{}, w, r)
-	})
+	http.Handle(srv.Prefix+"/api/count",
+		wrap(
+			func(w http.ResponseWriter, r *http.Request) {
+				srv.countHandler(&Context{}, w, r)
+			}))
 
 	if srv.enableBrowse {
 		http.HandleFunc(srv.Prefix+"/browse", func(w http.ResponseWriter, r *http.Request) {
