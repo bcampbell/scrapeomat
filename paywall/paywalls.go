@@ -6,7 +6,7 @@ package paywall
 import (
 	"code.google.com/p/gcfg"
 	"fmt"
-	//	"io/ioutil"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	//	"os"
@@ -158,26 +158,15 @@ func LoginFT(c *http.Client) error {
 
 	details := &conf.FT
 
-	// prime the pump
-	/*
-	       fmt.Printf("priming...\n")
-	   	foo, err := c.Get("http://www.ft.com")
-	   	if err != nil {
-	   		return err
-	   	}
-	   	raw, _ := ioutil.ReadAll(foo.Body)
-	   	defer foo.Body.Close()
-	*/
-
-	//	fmt.Printf("login...\n")
-	loginURL := "https://registration.ft.com/registration/barrier/login"
+	loginURL := "https://accounts.ft.com/login?location=http://www.ft.com/home"
 
 	postData := url.Values{}
-	postData.Set("username", details.Username)
+	postData.Set("email", details.Username)
 	postData.Set("password", details.Password)
 
-	postData.Set("location", "http://www.ft.com/home/uk")
-	postData.Set("rememberme", "on")
+	postData.Set("location", "http://www.ft.com/home")
+	postData.Set("rememberMe", "true")
+	postData.Set("Sign In", "")
 
 	//	fmt.Println(postData)
 
@@ -189,8 +178,8 @@ func LoginFT(c *http.Client) error {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	//	req.Header.Set("User-Agent", `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0`)
 
-	//	req.Header.Set("Referrer", "http://www.ft.com/home/uk")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Referer", "https://accounts.ft.com/login?location=http%3A%2F%2Fwww.ft.com%2Fhome%2Fasia")
 	//req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 	//	fmt.Printf("%v\n", req)
 
@@ -203,14 +192,12 @@ func LoginFT(c *http.Client) error {
 		return err
 	}
 	defer resp.Body.Close()
-	/*
-		_, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-	*/
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
 
-	//	fmt.Printf("Ended up at: %s %s %d\n", resp.Request.Method, resp.Request.URL, resp.StatusCode)
+	fmt.Printf("Ended up at: %s %s %d\n", resp.Request.Method, resp.Request.URL, resp.StatusCode)
 
 	// upon success, redirects us on to "http://www.ft.com/home/uk"
 	// upon failure, returns a 200, but leaves us on registration.ft.com
@@ -219,7 +206,7 @@ func LoginFT(c *http.Client) error {
 	switch resp.Request.URL.Host {
 	case "www.ft.com":
 		return nil
-	case "registration.ft.com":
+	case "accounts.ft.com":
 		return fmt.Errorf("bad username/password?")
 	default:
 		return fmt.Errorf("ended up at unexpected url (%s)", resp.Request.URL)
