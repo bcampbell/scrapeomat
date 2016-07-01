@@ -46,6 +46,8 @@ func main() {
 		err = DoDailyStar(opts.dayFrom, opts.dayTo)
 	case "ft":
 		err = DoFT()
+	case "thetimes":
+		err = DoTheTimes()
 	case "bbc":
 		err = DoBBCNews(opts.dayFrom, opts.dayTo)
 	default:
@@ -188,6 +190,24 @@ func DoFT() error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func DoTheTimes() error {
+
+	// The Times search doesn't do stopwords, so a search for 'a' does the trick nicely ;-)
+	s := &Searcher{
+		SearchURL:     "http://www.thetimes.co.uk/search?q=a&sort=date_published&sortorder=desc",
+		Params:        url.Values{},
+		PageParam:     "p",
+		ResultLinkSel: cascadia.MustCompile(".SearchResultList h2.Item-headline a"),
+		NPages:        opts.nPages,
+	}
+
+	err := s.Run(os.Stdout)
+	if err != nil {
+		return err
 	}
 	return nil
 }
