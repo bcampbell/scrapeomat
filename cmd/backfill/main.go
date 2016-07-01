@@ -3,57 +3,57 @@ package main
 // hacky little tool to try and grab old articles from a site
 
 import (
-	"code.google.com/p/cascadia"
 	"flag"
 	"fmt"
+	"github.com/andybalholm/cascadia"
 	"github.com/bcampbell/arts/util"
 	"golang.org/x/net/html"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
-	"semprini/scrapeomat/paywall"
+	//	"semprini/scrapeomat/paywall"
 	"time"
 )
 
 var opts struct {
 	dayFrom, dayTo string
+	nPages         int
 }
 
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "%s [ft|dailystar|bbc] [dayfrom] [dayto]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s [ft|dailystar|bbc]\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Grab older articles from various sites, dumping the urls out to stdout\n")
 		flag.PrintDefaults()
 	}
 
+	flag.IntVar(&opts.nPages, "n", 0, "max num of search result pages to fetch")
+	flag.StringVar(&opts.dayFrom, "from", "", "from date")
+	flag.StringVar(&opts.dayTo, "to", "", "to date")
 	flag.Parse()
 
 	var err error
-	if flag.NArg() < 3 {
-		fmt.Fprintf(os.Stderr, "ERROR: missing args\n")
+	if flag.NArg() < 1 {
+		fmt.Fprintf(os.Stderr, "ERROR: missing publication\n")
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	dayFrom := flag.Arg(1)
-	dayTo := flag.Arg(2)
 	switch flag.Arg(0) {
 	case "dailystar":
-		err = DoDailyStar(dayFrom, dayTo)
+		err = DoDailyStar(opts.dayFrom, opts.dayTo)
 	case "ft":
-		err = DoFT(dayFrom, dayTo)
+		err = DoFT()
 	case "bbc":
-		err = DoBBCNews(dayFrom, dayTo)
+		err = DoBBCNews(opts.dayFrom, opts.dayTo)
 	default:
 		{
 			fmt.Fprintf(os.Stderr, "%s not a handled site\n", flag.Arg(0))
 			os.Exit(1)
 		}
 	}
-	//err = DoTheSun()
-	//err = DoTheCourier()
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
@@ -91,12 +91,6 @@ func DoTheSun() error {
 	client := &http.Client{
 		Transport: util.NewPoliteTripper(),
 		Jar:       jar,
-	}
-
-	fmt.Fprintf(os.Stderr, "log in\n")
-	err = paywall.LoginSun(client)
-	if err != nil {
-		return err
 	}
 
 	//high := 3180
@@ -152,48 +146,47 @@ func fetchAndParse(client *http.Client, u string) (*html.Node, error) {
 	return html.Parse(resp.Body)
 }
 
-func DoFT(dayFrom, dayTo string) error {
-	linkSel := cascadia.MustCompile(".results .result h3 a")
+func DoFT() error {
 
-	// next link doesn't show up here (but does in firefox).
-	// Maybe pretending to be a real browser and sending more headers would help?
-	//nextPageSel := cascadia.MustCompile(".pagination .next a")
+	if opts.dayFrom == "" || opts.dayTo == "" {
 
-	// so, for now, just iterate page by page until no more results.
-
-	// don't need to log in for search
-	client := &http.Client{
-		Transport: util.NewPoliteTripper(),
+		return fmt.Errorf("Date range required for FT")
 	}
 
-	for page := 1; ; page++ {
-		// rpp = results per page
-		// fa=facets?
-		// s=sort
-		u := "http://search.ft.com/search?q=&t=all&rpp=100&fa=people%2Corganisations%2Cregions%2Csections%2Ctopics%2Ccategory%2Cbrand&s=-initialPublishDateTime&f=initialPublishDateTime[" + dayFrom + "T00%3A00%3A00%2C" + dayTo + "T23%3A59%3A59]&p=" + fmt.Sprintf("%d", page)
-		root, err := fetchAndParse(client, u)
-		if err != nil {
-			return err
-		}
-		baseURL, err := url.Parse(u)
-		if err != nil {
-			return err
-		}
-		cnt := 0
-		for _, a := range linkSel.MatchAll(root) {
-			href := GetAttr(a, "href")
-			absURL, err := baseURL.Parse(href)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "skip %s\n", href)
-				continue
-			}
-			cnt++
-			fmt.Println(absURL)
+	// FT limits number of pages or results you can iterate through,
+	// so perform a separate search for each day
+	days, err := genDateRange(opts.dayFrom, opts.dayTo)
+	if err != nil {
+		return fmt.Errorf("bad date range: %s", err)
+	}
+	for _, day := range days {
+
+		dayFrom := day.Format(dayFmt)
+		dayTo := dayFrom
+
+		searchURL := "http://search.ft.com/search?q=&t=all&rpp=100&fa=people%2Corganisations%2Cregions%2Csections%2Ctopics%2Ccategory%2Cbrand&s=-initialPublishDateTime&f=initialPublishDateTime[" + dayFrom + "T00%3A00%3A00%2C" + dayTo + "T23%3A59%3A59]"
+		s := &Searcher{
+			SearchURL: searchURL,
+			Params:    url.Values{
+			/*
+				"q":   []string{""},    // querystring
+				"rpp": []string{"100"}, // results-per-page
+			*/
+			},
+			PageParam:     "p",
+			ResultLinkSel: cascadia.MustCompile(".results .result h3 a"),
+			//		NoMoreResultsSel: cascadia.MustCompile(".results .result-list .empty"),
+			NPages: 8, // should be enough to cover a day!
 		}
 
-		// finish when no more results
-		if cnt == 0 {
-			break
+		// next link doesn't show up here (but does in firefox).
+		// Maybe pretending to be a real browser and sending more headers would help?
+		//nextPageSel: cascadia.MustCompile(".pagination .next a")
+		// so, for now, just iterate page by page until no more results.
+
+		err := s.Run(os.Stdout)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
