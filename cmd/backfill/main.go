@@ -73,7 +73,7 @@ var scrapers map[string](func(*Options) error) = map[string](func(*Options) erro
 	"bbc":       DoBBCNews,
 	"thetimes":  DoTheTimes,
 	"dailystar": DoDailyStar,
-	//"telegraph": DoTelegraph,
+	"telegraph": DoTelegraph,
 	//"thesun": DoTheSun,
 }
 
