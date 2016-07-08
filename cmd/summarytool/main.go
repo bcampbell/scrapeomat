@@ -26,11 +26,15 @@ func init() {
 	flag.StringVar(&opts.from, "from", "", "from date")
 	flag.StringVar(&opts.to, "to", "", "to date")
 	flag.IntVar(&opts.termWidth, "w", 0, "output width (0=auto)")
-	flag.StringVar(&opts.server, "s", "http://localhost:12345", "API server to query")
+	flag.StringVar(&opts.server, "s", "http://localhost:12345", "`url` of API server to query")
 	flag.Var(&opts.pubs, "p", "publication code(s)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, `
+Queries a slurp server and displays summary of article counts
+using a noddy ascii art chart.
+`)
 		flag.PrintDefaults()
 	}
 }
