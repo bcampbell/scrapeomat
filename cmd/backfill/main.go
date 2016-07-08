@@ -12,22 +12,86 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"strings"
 	//	"semprini/scrapeomat/paywall"
 	"time"
 )
 
-var opts struct {
+type Options struct {
 	dayFrom, dayTo string
 	nPages         int
 }
 
+func (opts *Options) DayRange() ([]time.Time, error) {
+	from, to, err := opts.parseDays()
+	if err != nil {
+		return nil, err
+	}
+
+	// make sure we're at start of day
+	from = time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
+
+	out := []time.Time{}
+	for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
+		out = append(out, day)
+	}
+	return out, nil
+}
+
+func (opts *Options) parseDays() (time.Time, time.Time, error) {
+
+	const dayFmt = "2006-01-02"
+	z := time.Time{}
+
+	var from, to time.Time
+	var err error
+	if opts.dayFrom == "" {
+		return z, z, fmt.Errorf("'from' day required")
+	}
+	from, err = time.Parse(dayFmt, opts.dayFrom)
+	if err != nil {
+		return z, z, fmt.Errorf("bad 'from' day (%s)", err)
+	}
+
+	if opts.dayTo == "" {
+		return z, z, fmt.Errorf("'to' day required")
+	}
+	to, err = time.Parse(dayFmt, opts.dayTo)
+	if err != nil {
+		return z, z, fmt.Errorf("bad 'to' day (%s)", err)
+	}
+
+	if to.Before(from) {
+		return z, z, fmt.Errorf("bad date range ('from' is after 'to')")
+	}
+
+	return from, to, nil
+}
+
+var scrapers map[string](func(*Options) error) = map[string](func(*Options) error){
+	"ft":        DoFT,
+	"bbc":       DoBBCNews,
+	"thetimes":  DoTheTimes,
+	"dailystar": DoDailyStar,
+	//"telegraph": DoTelegraph,
+	//"thesun": DoTheSun,
+}
+
 func main() {
 	flag.Usage = func() {
+
+		sites := []string{}
+		for site, _ := range scrapers {
+			sites = append(sites, site)
+		}
+
 		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "%s [ft|dailystar|bbc]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s [OPTIONS] %s\n", os.Args[0], strings.Join(sites, "|"))
 		fmt.Fprintf(os.Stderr, "Grab older articles from various sites, dumping the urls out to stdout\n")
 		flag.PrintDefaults()
 	}
+
+	opts := Options{}
 
 	flag.IntVar(&opts.nPages, "n", 0, "max num of search result pages to fetch")
 	flag.StringVar(&opts.dayFrom, "from", "", "from date")
@@ -41,21 +105,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	switch flag.Arg(0) {
-	case "dailystar":
-		err = DoDailyStar(opts.dayFrom, opts.dayTo)
-	case "ft":
-		err = DoFT()
-	case "thetimes":
-		err = DoTheTimes()
-	case "bbc":
-		err = DoBBCNews(opts.dayFrom, opts.dayTo)
-	default:
-		{
-			fmt.Fprintf(os.Stderr, "%s not a handled site\n", flag.Arg(0))
-			os.Exit(1)
-		}
+	site := flag.Arg(0)
+	scraper := scrapers[site]
+	if scraper == nil {
+		fmt.Fprintf(os.Stderr, "ERROR: unknown publication '%s'\n", site)
+		os.Exit(1)
 	}
+
+	err = scraper(&opts)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
@@ -82,7 +139,7 @@ func GetAttr(n *html.Node, attr string) string {
 // their search links are all ajaxy, so can't just issue a search and
 // autoclick the 'next page' link. Instead we iterate through the results
 // 10 at a time using the minimal html returned by /search/showMoreAction.do
-func DoTheSun() error {
+func DoTheSun(opts *Options) error {
 	linkSel := cascadia.MustCompile("li h3 a")
 
 	// need to log in
@@ -148,7 +205,7 @@ func fetchAndParse(client *http.Client, u string) (*html.Node, error) {
 	return html.Parse(resp.Body)
 }
 
-func DoFT() error {
+func DoFT(opts *Options) error {
 
 	if opts.dayFrom == "" || opts.dayTo == "" {
 
@@ -194,7 +251,7 @@ func DoFT() error {
 	return nil
 }
 
-func DoTheTimes() error {
+func DoTheTimes(opts *Options) error {
 
 	// The Times search doesn't do stopwords, so a search for 'a' does the trick nicely ;-)
 	s := &Searcher{
@@ -212,7 +269,7 @@ func DoTheTimes() error {
 	return nil
 }
 
-func DoTheCourier() error {
+func DoTheCourier(opts *Options) error {
 	// no specific date range, but you can get the results for the last month/year/week
 	linkSel := cascadia.MustCompile(".search-page-results-list .article-title a")
 	nextPageSel := cascadia.MustCompile(".search-page-pagination a.next")
@@ -268,6 +325,7 @@ func DoTheCourier() error {
 
 const dayFmt = "2006-01-02"
 
+// TODO: kill this
 func genDateRange(dayFrom, dayTo string) ([]time.Time, error) {
 
 	var from, to time.Time
@@ -303,7 +361,7 @@ func genDateRange(dayFrom, dayTo string) ([]time.Time, error) {
 
 // daily star has handy archive pages, one per day:
 // http://www.dailystar.co.uk/sitearchive/YYYY/M/D
-func DoDailyStar(dayFrom, dayTo string) error {
+func DoDailyStar(opts *Options) error {
 	days, err := genDateRange(opts.dayFrom, opts.dayTo)
 	if err != nil {
 		return err
@@ -358,7 +416,7 @@ func href(anchor *html.Node, baseURL *url.URL) (string, error) {
 	return absURL.String(), nil
 }
 
-func DoBBCNews(dayFrom, dayTo string) error {
+func DoBBCNews(opts *Options) error {
 	// BBC has a search facility, but doesn't seem to have an option to
 	// sort by date... so it's a matter of stepping through huge numbers of results
 	// in the hope that we pick up what we need. Sigh.
