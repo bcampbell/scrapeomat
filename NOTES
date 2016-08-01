@@ -1,0 +1,13 @@
+# NOTES - stuff to do some time
+
+## refactor scraper
+ - decouple store from scraper
+ - move daemon mode out of scraper
+
+## improve archive (.warc storage)
+ - allow searching by time period
+ - option for scrapers to check in archive before using HTTP
+
+
+
+
