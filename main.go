@@ -29,16 +29,37 @@ var opts struct {
 	verbosity         int
 	scraperConfigPath string
 	archivePath       string
+	inputFile         string
+	discover          bool
+	list              bool
+	db                string
 }
 
 func main() {
+	flag.Usage = func() {
+
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "%s [OPTIONS] SCRAPER...|ALL\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, `
+Runs scrapers to find and scrape articles for configured sites.
+
+By default, runs in continuous mode, checking for new articles at regular intervals.
+
+environment vars:
+
+   SCRAPEOMAT_DB - postgres db connection string (same as -db option)
+
+options:
+`)
+		flag.PrintDefaults()
+	}
 	flag.IntVar(&opts.verbosity, "v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
 	flag.StringVar(&opts.scraperConfigPath, "s", "scrapers", "path for scraper configs")
 	flag.StringVar(&opts.archivePath, "a", "archive", "archive dir to dump .warc files into")
-	var listFlag = flag.Bool("l", false, "List target sites and exit")
-	var discoverFlag = flag.Bool("discover", false, "run discovery for target sites, output article links to stdout, then exit")
-	var inputListFlag = flag.String("i", "", "input file of URLs (runs scrapers then exit)")
-	var databaseURLFlag = flag.String("db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	flag.BoolVar(&opts.list, "l", false, "List target sites and exit")
+	flag.BoolVar(&opts.discover, "discover", false, "run discovery for target sites, output article links to stdout, then exit")
+	flag.StringVar(&opts.inputFile, "i", "", "input file of URLs (runs scrapers then exit)")
+	flag.StringVar(&opts.db, "db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
 	flag.Parse()
 
 	scrapers, err := buildScrapers()
@@ -47,7 +68,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *listFlag {
+	if opts.list {
 		// just list available scrapers and exit
 		names := sort.StringSlice{}
 		for _, scraper := range scrapers {
@@ -97,7 +118,7 @@ func main() {
 		targetScrapers = append(targetScrapers, scraper)
 	}
 
-	if *discoverFlag {
+	if opts.discover {
 		// just run discovery phase, print out article URLs, then exit
 		for _, scraper := range targetScrapers {
 			var client *http.Client
@@ -119,7 +140,7 @@ func main() {
 		return
 	}
 
-	connStr := *databaseURLFlag
+	connStr := opts.db
 	if connStr == "" {
 		connStr = os.Getenv("SCRAPEOMAT_DB")
 	}
@@ -137,13 +158,13 @@ func main() {
 	defer db.Close()
 
 	// running with input file?
-	if *inputListFlag != "" {
+	if opts.inputFile != "" {
 		// read in the input URLs from file
 
 		var err error
 		artURLs := []string{}
 
-		inFile, err := os.Open(*inputListFlag)
+		inFile, err := os.Open(opts.inputFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR opening input list: %s\n", err)
 			os.Exit(1)
@@ -156,7 +177,7 @@ func main() {
 			}
 		}
 		if err = scanner.Err(); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR reading %s: %s\n", *inputListFlag, err)
+			fmt.Fprintf(os.Stderr, "ERROR reading %s: %s\n", opts.inputFile, err)
 			os.Exit(1)
 		}
 		if len(targetScrapers) != 1 {
