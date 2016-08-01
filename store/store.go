@@ -212,23 +212,19 @@ func (store *Store) stash2(tx *sql.Tx, art *Article) (int, error) {
 			return 0, err
 		}
 
-		// delete old urls (TODO: should merge?)
+		// delete old urls
 		_, err = tx.Exec(`DELETE FROM article_url WHERE article_id=$1`, artID)
 		if err != nil {
 			return 0, err
 		}
 
-		// delete old keywords (TODO: should merge?)
+		// delete old keywords
 		_, err = tx.Exec(`DELETE FROM article_keyword WHERE article_id=$1`, artID)
 		if err != nil {
 			return 0, err
 		}
 
 		// delete old authors
-		// TODO: either:
-		//         1) get rid of author_attr
-		//  or     2) make an attempt to resolve authors
-		//  and/or 3) do a periodic sweep to zap orphaned authors
 		_, err = tx.Exec(`DELETE FROM author WHERE id IN (SELECT author_id FROM author_attr WHERE article_id=$1)`, artID)
 		if err != nil {
 			return 0, err
