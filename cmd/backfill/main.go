@@ -20,6 +20,7 @@ import (
 type Options struct {
 	dayFrom, dayTo string
 	nPages         int
+	//	list           bool // list scrapers then exit
 }
 
 func (opts *Options) DayRange() ([]time.Time, error) {
@@ -69,11 +70,12 @@ func (opts *Options) parseDays() (time.Time, time.Time, error) {
 }
 
 var scrapers map[string](func(*Options) error) = map[string](func(*Options) error){
-	"ft":        DoFT,
-	"bbc":       DoBBCNews,
-	"thetimes":  DoTheTimes,
-	"dailystar": DoDailyStar,
-	"telegraph": DoTelegraph,
+	"ft":                DoFT,
+	"bbc":               DoBBCNews,
+	"thetimes":          DoTheTimes,
+	"dailystar":         DoDailyStar,
+	"telegraph":         DoTelegraph,
+	"croydonadvertiser": DoCroydonAdvertiser,
 	//"thesun": DoTheSun,
 }
 
@@ -96,6 +98,7 @@ func main() {
 	flag.IntVar(&opts.nPages, "n", 0, "max num of search result pages to fetch")
 	flag.StringVar(&opts.dayFrom, "from", "", "from date")
 	flag.StringVar(&opts.dayTo, "to", "", "to date")
+	//flag.BoolVar(&opts.list, "l", false, "list available backfill scrapers, then exit")
 	flag.Parse()
 
 	var err error
@@ -269,6 +272,22 @@ func DoTheTimes(opts *Options) error {
 	return nil
 }
 
+func DoCroydonAdvertiser(opts *Options) error {
+
+	s := &Searcher{
+		SearchURL:     "http://www.croydonadvertiser.co.uk/search/search.html?searchType=&searchPhrase=&where=&orderByOption=dateDesc",
+		Params:        url.Values{},
+		NextPageSel:   cascadia.MustCompile(`.search-results a[rel="next"]`),
+		ResultLinkSel: cascadia.MustCompile(".search-results .channel-list-item a"),
+		NPages:        opts.nPages,
+	}
+
+	err := s.Run(os.Stdout)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 func DoTheCourier(opts *Options) error {
 	// no specific date range, but you can get the results for the last month/year/week
 	linkSel := cascadia.MustCompile(".search-page-results-list .article-title a")

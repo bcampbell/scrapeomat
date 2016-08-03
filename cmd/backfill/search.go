@@ -17,7 +17,8 @@ type Searcher struct {
 	// which param holds pagenum (if set, used to iterate through search results)
 	PageParam string
 	// css selector to find next page
-	NextPageSel   cascadia.Selector
+	NextPageSel cascadia.Selector
+	// css selector to find article links
 	ResultLinkSel cascadia.Selector
 	//NoMoreResultsSel cascadia.Selector
 	// Number of pages to step through (0=no limit)
