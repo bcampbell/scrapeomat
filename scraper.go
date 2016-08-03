@@ -176,11 +176,23 @@ func (scraper *Scraper) DoRun(db *store.Store, c *http.Client) error {
 	scraper.infoLog.Printf("found %d articles, %d new (%d pages fetched, %d errors)\n",
 		len(foundArts), len(newArts), stats.FetchCount, stats.ErrorCount)
 
-	return scraper.FetchAndStash(newArts, db, c)
+	return scraper.FetchAndStash(newArts, db, c, false)
+}
+
+func uniq(in []string) []string {
+	foo := map[string]struct{}{}
+	for _, s := range in {
+		foo[s] = struct{}{}
+	}
+	out := make([]string, 0, len(foo))
+	for s, _ := range foo {
+		out = append(out, s)
+	}
+	return out
 }
 
 // perform a single scraper run, using a list of article URLS instead of invoking the discovery
-func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Client) error {
+func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Client, updateMode bool) error {
 
 	scraper.infoLog.Printf("start run from list\n")
 	// reset the stats
@@ -209,12 +221,22 @@ func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Cl
 		cookedArts = append(cookedArts, cooked.String())
 	}
 
-	newArts, err := db.WhichAreNew(cookedArts)
-	if err != nil {
-		return fmt.Errorf("WhichAreNew() failed: %s", err)
+	// remove any dupes
+	cookedArts = uniq(cookedArts)
+
+	var err error
+	var newArts []string
+	if !updateMode {
+		newArts, err = db.WhichAreNew(cookedArts)
+		if err != nil {
+			return fmt.Errorf("WhichAreNew() failed: %s", err)
+		}
+	} else {
+		// all of `em
+		newArts = cookedArts
 	}
 
-	scraper.infoLog.Printf("%d new articles, %d rejected\n",
+	scraper.infoLog.Printf("%d articles, %d rejected\n",
 		len(newArts), rejectCnt)
 
 	err = scraper.Login(c)
@@ -222,7 +244,7 @@ func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Cl
 		return err
 	}
 
-	return scraper.FetchAndStash(newArts, db, c)
+	return scraper.FetchAndStash(newArts, db, c, updateMode)
 }
 
 func (scraper *Scraper) checkQuit() bool {
@@ -234,7 +256,7 @@ func (scraper *Scraper) checkQuit() bool {
 	}
 }
 
-func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, c *http.Client) error {
+func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, c *http.Client, updateMode bool) error {
 	//scraper.infoLog.Printf("Start scraping\n")
 
 	// fetch and extract 'em
@@ -253,10 +275,28 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, c *http
 			}
 			continue
 		}
-		// TODO: recheck the urls - we might already have it
 
-		// STASH
-		_, err = db.Stash(art)
+		// TODO: wrap in transaction...
+		// check the urls - we might already have it
+		var ids []int
+		ids, err = db.FindURLs(art.URLs)
+		if err == nil {
+			if len(ids) == 1 {
+				art.ID = ids[0]
+			}
+			if len(ids) > 1 {
+				err = fmt.Errorf("resolves to %d articles", len(ids))
+			}
+		}
+
+		if err == nil {
+			if art.ID != 0 && !updateMode {
+				scraper.errorLog.Printf("already got %s (id %d)\n", artURL, art.ID)
+				// TODO: add missing URLs!!!
+				continue
+			}
+			_, err = db.Stash(art)
+		}
 		if err != nil {
 			scraper.errorLog.Printf("stash failure on: %s (on %s)\n", err, artURL)
 			scraper.stats.ErrorCount += 1

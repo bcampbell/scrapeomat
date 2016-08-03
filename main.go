@@ -30,6 +30,7 @@ var opts struct {
 	scraperConfigPath string
 	archivePath       string
 	inputFile         string
+	updateMode        bool
 	discover          bool
 	list              bool
 	db                string
@@ -59,12 +60,18 @@ options:
 	flag.BoolVar(&opts.list, "l", false, "List target sites and exit")
 	flag.BoolVar(&opts.discover, "discover", false, "run discovery for target sites, output article links to stdout, then exit")
 	flag.StringVar(&opts.inputFile, "i", "", "input file of URLs (runs scrapers then exit)")
+	flag.BoolVar(&opts.updateMode, "update", false, "Update articles already in db (when using -i)")
 	flag.StringVar(&opts.db, "db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
 	flag.Parse()
 
 	scrapers, err := buildScrapers()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+		os.Exit(1)
+	}
+
+	if opts.updateMode && opts.inputFile == "" {
+		fmt.Fprintf(os.Stderr, "ERROR: -update can only be used with -i\n")
 		os.Exit(1)
 	}
 
@@ -199,7 +206,7 @@ options:
 				scraper.infoLog.Printf("not using cookies")
 				client = politeClient
 			}
-			err = scraper.DoRunFromList(artURLs, db, client)
+			err = scraper.DoRunFromList(artURLs, db, client, opts.updateMode)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 				os.Exit(1)

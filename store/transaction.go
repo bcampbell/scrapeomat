@@ -7,31 +7,59 @@ import (
 )
 
 type Transaction struct {
-	s  *Store
-	tx *sql.Tx
+	s   *Store
+	tx  *sql.Tx
+	err error
 }
 
-// Transaction public interface:
+// Transaction public interface
 /*
 type Txer interface {
-	Commit() error
-	Rollback() error
-	Stash(art *Article) (int, error)
+	Close() errpr
+	Stash(art *Article) int
+	Err() error
 }*/
-
-func (t *Transaction) Commit() error {
-	return t.tx.Commit()
+func newTransaction(store *Store) *Transaction {
+	tx, err := store.db.Begin()
+	if err != nil {
+		// transaction is borked, but user can keep calling it, and
+		// the error will be returned upon Close()
+		return &Transaction{s: store, tx: nil, err: err}
+	} else {
+		return &Transaction{s: store, tx: tx, err: err}
+	}
 }
 
-func (t *Transaction) Rollback() error {
-	return t.tx.Rollback()
+func (t *Transaction) Close() error {
+
+	if t.tx == nil {
+		return t.err
+	}
+
+	var e2 error
+	if t.err == nil {
+		e2 = t.tx.Commit()
+	} else {
+		e2 = t.tx.Rollback()
+	}
+	t.tx = nil // to handle double-close
+
+	if e2 != nil {
+		t.err = e2
+	}
+
+	return t.err
 }
 
-func (t *Transaction) Stash(art *Article) (int, error) {
+func (t *Transaction) Stash(art *Article) int {
+	if t.err != nil {
+		return 0
+	}
 	tx := t.tx
 	pubID, err := t.findOrCreatePublication(&art.Publication)
 	if err != nil {
-		return 0, err
+		t.err = err
+		return 0
 	}
 
 	artID := art.ID
@@ -40,7 +68,8 @@ func (t *Transaction) Stash(art *Article) (int, error) {
 	if art.Extra != nil {
 		extra, err = json.Marshal(art.Extra)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 	}
 
@@ -56,7 +85,8 @@ func (t *Transaction) Stash(art *Article) (int, error) {
 			art.Section,
 			extra).Scan(&artID)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 	} else {
 		// updating an existing article
@@ -72,36 +102,42 @@ func (t *Transaction) Stash(art *Article) (int, error) {
 			extra,
 			artID)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 
 		// delete old urls
 		_, err = tx.Exec(`DELETE FROM article_url WHERE article_id=$1`, artID)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 
 		// delete old keywords
 		_, err = tx.Exec(`DELETE FROM article_keyword WHERE article_id=$1`, artID)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 
 		// delete old authors
 		_, err = tx.Exec(`DELETE FROM author WHERE id IN (SELECT author_id FROM author_attr WHERE article_id=$1)`, artID)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 		_, err = tx.Exec(`DELETE FROM author_attr WHERE article_id=$1`, artID)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 	}
 
 	for _, u := range art.URLs {
 		_, err = tx.Exec(`INSERT INTO article_url(article_id,url) VALUES($1,$2)`, artID, u)
 		if err != nil {
-			return 0, fmt.Errorf("failed adding url %s: %s", u, err)
+			t.err = fmt.Errorf("failed adding url %s: %s", u, err)
+			return 0
 		}
 	}
 
@@ -111,7 +147,8 @@ func (t *Transaction) Stash(art *Article) (int, error) {
 			k.Name,
 			k.URL)
 		if err != nil {
-			return 0, fmt.Errorf("failed adding keyword %s (%s): %s", k.Name, k.URL, err)
+			t.err = fmt.Errorf("failed adding keyword %s (%s): %s", k.Name, k.URL, err)
+			return 0
 		}
 	}
 
@@ -123,18 +160,20 @@ func (t *Transaction) Stash(art *Article) (int, error) {
 			author.Email,
 			author.Twitter).Scan(&authorID)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 		_, err = tx.Exec(`INSERT INTO author_attr(author_id,article_id) VALUES ($1, $2)`,
 			authorID,
 			artID)
 		if err != nil {
-			return 0, err
+			t.err = err
+			return 0
 		}
 	}
 
 	// all good.
-	return artID, nil
+	return artID
 }
 
 func (t *Transaction) findOrCreatePublication(pub *Publication) (int, error) {

@@ -69,26 +69,15 @@ func (store *Store) Close() {
 	}
 }
 
-func (store *Store) Begin() (*Transaction, error) {
-	tx, err := store.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	return &Transaction{s: store, tx: tx}, nil
+func (store *Store) Begin() *Transaction {
+	return newTransaction(store)
 }
 
 func (store *Store) Stash(art *Article) (int, error) {
-	tx, err := store.Begin()
-	if err != nil {
-		return 0, err
-	}
-	artID, err := tx.Stash(art)
-	if err != nil {
-		tx.Rollback()
-		return 0, err
-	}
-	tx.Commit()
-	return artID, nil
+	tx := store.Begin()
+	artID := tx.Stash(art)
+	err := tx.Close()
+	return artID, err
 }
 
 var timeFmts = []string{
