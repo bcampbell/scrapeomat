@@ -476,3 +476,61 @@ func (store *Store) FetchSummary(filt *Filter, group string) ([]DatePubCount, er
 	return out, nil
 
 }
+
+// Fetch a single article by ID
+func (store *Store) FetchArt(artID int) (*Article, error) {
+
+	q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
+	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
+	               WHERE a.id=$1`
+
+	store.DebugLog.Printf("fetch: %s [%d]\n", q, artID)
+	row := store.db.QueryRow(q, artID)
+
+	/* TODO: split scanning/augmenting out into function, to share with Fetch() */
+	var art Article
+	var p = &art.Publication
+
+	var published, updated pq.NullTime
+	var extra []byte
+	if err := row.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &extra, &p.Code, &p.Name, &p.Domain); err != nil {
+		return nil, err
+	}
+
+	if published.Valid {
+		art.Published = published.Time.Format(time.RFC3339)
+	}
+	if updated.Valid {
+		art.Updated = updated.Time.Format(time.RFC3339)
+	}
+
+	urls, err := store.fetchURLs(art.ID)
+	if err != nil {
+		return nil, err
+	}
+	art.URLs = urls
+
+	keywords, err := store.fetchKeywords(art.ID)
+	if err != nil {
+		return nil, err
+	}
+	art.Keywords = keywords
+
+	authors, err := store.fetchAuthors(art.ID)
+	if err != nil {
+		return nil, err
+	}
+	art.Authors = authors
+
+	// decode extra data
+	if len(extra) > 0 {
+		err = json.Unmarshal(extra, &art.Extra)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	/* end scanning/augmenting */
+
+	return &art, nil
+}

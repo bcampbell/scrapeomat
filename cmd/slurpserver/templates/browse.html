@@ -26,7 +26,7 @@
     {{range .Arts}}
     <tr>
         <td>{{.ID}}</td>
-        <td><a href="{{.CanonicalURL}}">{{.Headline}}</td>
+        <td><a href="browse/art?id={{.ID}}">{{.Headline}}</td>
         <td>{{.Publication.Code}}</td>
         <td>{{.Published}}</td>
         <td>{{range .Authors}}{{.Name}}, {{end}}</td>

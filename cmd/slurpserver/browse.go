@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"semprini/scrapeomat/store"
+	"strconv"
 )
 
 func (srv *SlurpServer) browseHandler(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +66,42 @@ func (srv *SlurpServer) browseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = srv.tmpls.browse.Execute(w, params)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "template error: %s", err)
+		return
+	}
+}
+
+// display a single article
+func (srv *SlurpServer) artHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("id=%s\n", r.FormValue("id"))
+	if r.FormValue("id") == "" {
+		http.Error(w, "Not found", 404)
+		return
+	}
+
+	artID, err := strconv.Atoi(r.FormValue("id"))
+	if err != nil {
+		http.Error(w, "Not found", 404)
+		return
+	}
+
+	art, err := srv.db.FetchArt(artID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	ctx := &Context{Prefix: srv.Prefix}
+
+	params := struct {
+		Ctx *Context
+		Art *store.Article
+	}{
+		ctx,
+		art,
+	}
+
+	err = srv.tmpls.art.Execute(w, params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "template error: %s", err)
 		return

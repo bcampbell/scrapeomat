@@ -1,0 +1,14 @@
+{{define "body"}}
+{{with .Art}}
+<table>
+  <tr><th>ID</th><td>{{.ID}}</td></tr>
+  <tr><th>Headline</th><td>{{.Headline}}</td></tr>
+  <tr><th>CanonicalURL</th><td><a href="{{.CanonicalURL}}">{{.CanonicalURL}}</a></td></tr>
+  <tr><th>URLs</th><td>{{range .URLs}}<a href="{{.}}">{{.}}</a></br>{{end}}</td></tr>
+  <tr><th>Publication</th><td>{{.Publication}}</td></tr>
+  <tr><th>Published</th><td>{{.Published}}</td></tr>
+  <tr><th>Updated</th><td>{{.Updated}}</td></tr>
+  <tr><th>Content</th><td>{{.Content}}</td></tr>
+</table>
+{{end}}
+{{end}}

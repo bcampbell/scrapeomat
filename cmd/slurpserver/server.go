@@ -35,6 +35,7 @@ type SlurpServer struct {
 	enableBrowse bool
 	tmpls        struct {
 		browse *template.Template
+		art    *template.Template
 	}
 }
 
@@ -43,11 +44,17 @@ func NewServer(db *store.Store, enableBrowse bool, port int, prefix string, info
 
 	baseTmpl := string(MustAsset("templates/base.html"))
 	browseTmpl := string(MustAsset("templates/browse.html"))
+	artTmpl := string(MustAsset("templates/art.html"))
 
 	t := template.New("browse.html")
 	t.Parse(browseTmpl)
 	t.Parse(baseTmpl)
 	srv.tmpls.browse = t
+
+	t = template.New("art.html")
+	t.Parse(artTmpl)
+	t.Parse(baseTmpl)
+	srv.tmpls.art = t
 
 	return srv, nil
 }
@@ -90,6 +97,9 @@ func (srv *SlurpServer) Run() error {
 	if srv.enableBrowse {
 		http.HandleFunc(srv.Prefix+"/browse", func(w http.ResponseWriter, r *http.Request) {
 			srv.browseHandler(w, r)
+		})
+		http.HandleFunc(srv.Prefix+"/browse/art", func(w http.ResponseWriter, r *http.Request) {
+			srv.artHandler(w, r)
 		})
 
 		// serve up stuff in /static
