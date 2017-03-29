@@ -11,8 +11,12 @@ navsel
 :   css selector to identify section links
     eg ".navigation-container a"
 
-xnavpats
-:   regex, urls to ignore when looking for section links
+xnavpat
+:   regex, urls to ignore when looking for section links.
+    Multiple xnavpat lines can be used.
+    Handy for excluding overly-numerous navigation pages
+    eg: "/tag/", "/category/"
+    
 
 artpat
 :   treat urls matching this regex as articles.
