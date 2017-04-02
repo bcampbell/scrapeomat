@@ -64,6 +64,9 @@ type DiscovererDef struct {
 
 	// If NoStripQuery is set then article URLs won't have the query part zapped
 	NoStripQuery bool
+
+	// UserAgent string to use in HTTP requests
+	UserAgent string
 }
 
 type DiscoverStats struct {
@@ -83,6 +86,7 @@ type Discoverer struct {
 	StripFragments     bool
 	StripQuery         bool
 	HostPat            *regexp.Regexp
+	UserAgent          string
 
 	ErrorLog Logger
 	InfoLog  Logger
@@ -173,6 +177,8 @@ func NewDiscoverer(cfg DiscovererDef) (*Discoverer, error) {
 		}
 		disc.HostPat = re
 	}
+
+	disc.UserAgent = cfg.UserAgent
 
 	// defaults
 	disc.StripFragments = true
@@ -268,8 +274,19 @@ func (disc *Discoverer) Run(client *http.Client, quit <-chan struct{}) (LinkSet,
 	return arts, nil
 }
 
-func (disc *Discoverer) fetchAndParse(client *http.Client, pageURL *url.URL) (*html.Node, error) {
-	resp, err := client.Get(pageURL.String())
+func (disc *Discoverer) fetchAndParse(c *http.Client, pageURL *url.URL) (*html.Node, error) {
+	req, err := http.NewRequest("GET", pageURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	// NOTE: FT.com always returns 403 if no Accept header is present.
+	// Seems like a reasonable thing to send anyway...
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	if disc.UserAgent != "" {
+		req.Header.Set("User-Agent", disc.UserAgent)
+	}
+
+	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err
 	}

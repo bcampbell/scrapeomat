@@ -75,6 +75,8 @@ pubcode
 :   short publication code for this site
     TODO: add details.
 
-
+useragent
+:   User-Agent string to use when sending HTTP requests for this scraper.
+    eg: useragent="https://udger.com/resources/online-parser?Fuas=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.10240"
 
 

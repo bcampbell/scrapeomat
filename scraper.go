@@ -321,6 +321,9 @@ func (scraper *Scraper) ScrapeArt(c *http.Client, artURL string) (*store.Article
 	// NOTE: FT.com always returns 403 if no Accept header is present.
 	// Seems like a reasonable thing to send anyway...
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	if scraper.Conf.UserAgent != "" {
+		req.Header.Set("User-Agent", scraper.Conf.UserAgent)
+	}
 
 	// other possible headers we might want to fiddle with:
 	//req.Header.Set("User-Agent", `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0`)
