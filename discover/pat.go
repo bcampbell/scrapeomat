@@ -11,8 +11,8 @@ var patReplacer *strings.Replacer = strings.NewReplacer(
 	"ID", `([0-9]{4,})`,
 	"SLUG", `([^/]+-[^/]+)`,
 	"YYYY", `(\d\d\d\d)`,
-	"MM", `(\d\d)`,
-	"DD", `(\d\d)`,
+	"MM", `([01]?[0-9])`,
+	"DD", `([0123]?[0-9])`,
 )
 
 // turn a simplified pattern into a regexp
