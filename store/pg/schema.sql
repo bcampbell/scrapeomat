@@ -28,6 +28,7 @@ CREATE TABLE article (
 );
 CREATE INDEX ON article(id);
 CREATE INDEX ON article(published);
+CREATE INDEX ON article(publication_id);
 
 CREATE TABLE author (
     id SERIAL PRIMARY KEY,
