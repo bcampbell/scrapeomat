@@ -11,7 +11,7 @@ here are my notes for setting up a development db:
 
 I create a new postgresq user ("scrape"):
 
-    $ sudo -u postgres createuser --no-superuser --no-createrole --nocreatedb scrape
+    $ sudo -u postgres createuser --no-superuser --no-createrole --no-createdb scrape
     $ sudo -u postgres psql -c "ALTER ROLE scrape WITH PASSWORD 'SooperSecretPassword'"
 
 I then set up a pg_ident mapping to allow my usual unix account ("ben")
