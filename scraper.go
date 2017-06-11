@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bcampbell/arts/arts"
+	"github.com/bcampbell/arts/util"
+	"github.com/bcampbell/biscuit"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"semprini/scrapeomat/arc"
 	"semprini/scrapeomat/discover"
@@ -39,14 +42,15 @@ type Scraper struct {
 	archiveDir string
 	stats      ScrapeStats
 	runPeriod  time.Duration
-
-	quit chan struct{}
+	client     *http.Client
+	quit       chan struct{}
 }
 
 type ScraperConf struct {
 	discover.DiscovererDef
-	Cookies bool
-	PubCode string
+	Cookies    bool
+	CookieFile string
+	PubCode    string
 }
 
 var ErrQuit = errors.New("quit requested")
@@ -78,14 +82,48 @@ func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string
 	}
 	scraper.discoverer = disc
 
+	// create the http client
+	// use politetripper to avoid hammering servers
+	var c *http.Client
+	if conf.Cookies || (conf.CookieFile != "") {
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			return nil, err
+		}
+		// If CookieFile set, load cookies here
+		if conf.CookieFile != "" {
+			cookieFile, err := os.Open(conf.CookieFile)
+			if err != nil {
+				return nil, err
+			}
+			defer cookieFile.Close()
+			_, err = biscuit.ReadCookies(cookieFile)
+			if err != nil {
+				return nil, err
+			}
+			// TODO!!!!
+			//			jar.Set(cookies)
+		}
+		c = &http.Client{
+			Transport: util.NewPoliteTripper(),
+			Jar:       jar,
+		}
+
+	} else {
+		c = &http.Client{
+			Transport: util.NewPoliteTripper(),
+		}
+	}
+	scraper.client = c
+
 	return &scraper, nil
 }
 
-func (scraper *Scraper) Login(c *http.Client) error {
+func (scraper *Scraper) Login() error {
 	login := paywall.GetLogin(scraper.Name)
 	if login != nil {
 		scraper.infoLog.Printf("Logging in\n")
-		err := login(c)
+		err := login(scraper.client)
 		if err != nil {
 			return fmt.Errorf("Login failed (%s)\n", err)
 		}
@@ -93,10 +131,10 @@ func (scraper *Scraper) Login(c *http.Client) error {
 	return nil
 }
 
-func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
+func (scraper *Scraper) Discover() ([]string, error) {
 	disc := scraper.discoverer
 
-	artLinks, err := disc.Run(c, scraper.quit)
+	artLinks, err := disc.Run(scraper.client, scraper.quit)
 	if err == discover.ErrQuit {
 		return nil, ErrQuit
 	}
@@ -112,10 +150,10 @@ func (scraper *Scraper) Discover(c *http.Client) ([]string, error) {
 }
 
 // start the scraper, running it at regular intervals
-func (scraper *Scraper) Start(db *store.Store, c *http.Client) {
+func (scraper *Scraper) Start(db *store.Store) {
 	for {
 		lastRun := time.Now()
-		err := scraper.DoRun(db, c)
+		err := scraper.DoRun(db)
 		if err == ErrQuit {
 			scraper.infoLog.Printf("Quit requested!\n")
 			return
@@ -144,7 +182,7 @@ func (scraper *Scraper) Stop() {
 }
 
 // perform a single scraper run
-func (scraper *Scraper) DoRun(db *store.Store, c *http.Client) error {
+func (scraper *Scraper) DoRun(db *store.Store) error {
 
 	scraper.infoLog.Printf("start run\n")
 	// reset the stats
@@ -157,12 +195,12 @@ func (scraper *Scraper) DoRun(db *store.Store, c *http.Client) error {
 		defer scraper.infoLog.Printf("run finished in %s (%d new articles, %d errors)\n", elapsed, stats.StashCount, stats.ErrorCount)
 	}()
 
-	err := scraper.Login(c)
+	err := scraper.Login()
 	if err != nil {
 		return err
 	}
 
-	foundArts, err := scraper.Discover(c)
+	foundArts, err := scraper.Discover()
 	if err != nil {
 		return err
 	}
@@ -176,7 +214,7 @@ func (scraper *Scraper) DoRun(db *store.Store, c *http.Client) error {
 	scraper.infoLog.Printf("found %d articles, %d new (%d pages fetched, %d errors)\n",
 		len(foundArts), len(newArts), stats.FetchCount, stats.ErrorCount)
 
-	return scraper.FetchAndStash(newArts, db, c, false)
+	return scraper.FetchAndStash(newArts, db, false)
 }
 
 func uniq(in []string) []string {
@@ -192,7 +230,7 @@ func uniq(in []string) []string {
 }
 
 // perform a single scraper run, using a list of article URLS instead of invoking the discovery
-func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Client, updateMode bool) error {
+func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, updateMode bool) error {
 
 	scraper.infoLog.Printf("start run from list\n")
 	// reset the stats
@@ -239,12 +277,12 @@ func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, c *http.Cl
 	scraper.infoLog.Printf("%d articles, %d rejected\n",
 		len(newArts), rejectCnt)
 
-	err = scraper.Login(c)
+	err = scraper.Login()
 	if err != nil {
 		return err
 	}
 
-	return scraper.FetchAndStash(newArts, db, c, updateMode)
+	return scraper.FetchAndStash(newArts, db, updateMode)
 }
 
 func (scraper *Scraper) checkQuit() bool {
@@ -256,7 +294,7 @@ func (scraper *Scraper) checkQuit() bool {
 	}
 }
 
-func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, c *http.Client, updateMode bool) error {
+func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, updateMode bool) error {
 	//scraper.infoLog.Printf("Start scraping\n")
 
 	// fetch and extract 'em
@@ -266,7 +304,7 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, c *http
 		}
 
 		//		scraper.infoLog.Printf("fetch/scrape %s", artURL)
-		art, err := scraper.ScrapeArt(c, artURL)
+		art, err := scraper.ScrapeArt(artURL)
 		if err != nil {
 			scraper.errorLog.Printf("%s\n", err)
 			scraper.stats.ErrorCount += 1
@@ -311,7 +349,7 @@ func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, c *http
 	return nil
 }
 
-func (scraper *Scraper) ScrapeArt(c *http.Client, artURL string) (*store.Article, error) {
+func (scraper *Scraper) ScrapeArt(artURL string) (*store.Article, error) {
 	// FETCH
 	fetchTime := time.Now()
 	req, err := http.NewRequest("GET", artURL, nil)
@@ -331,7 +369,7 @@ func (scraper *Scraper) ScrapeArt(c *http.Client, artURL string) (*store.Article
 	//req.Header.Set("Referrer", "http://...")
 	//req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 
-	resp, err := c.Do(req)
+	resp, err := scraper.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
