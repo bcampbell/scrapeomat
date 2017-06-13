@@ -25,6 +25,13 @@ type Publication struct {
 	// eg "article:publisher", rel-publisher
 }
 
+type TweetExtra struct {
+	RetweetCount  int `json:"retweet_count,omitempty"`
+	FavoriteCount int `json:"favorite_count,omitempty"`
+	// resolved links
+	Links []string `json:"links,omitempty"`
+}
+
 type Article struct {
 	ID           int    `json:"id,omitempty"`
 	CanonicalURL string `json:"canonical_url,omitempty"`
@@ -43,7 +50,9 @@ type Article struct {
 	Keywords    []Keyword   `json:"keywords,omitempty"`
 	Section     string      `json:"section,omitempty"`
 	// space for extra, free-form data
-	Extra interface{} `json:"extra,omitempty"`
+	//	Extra interface{} `json:"extra,omitempty"`
+	// Ha! not free-form any more! (bugfix for annoying int/float json issue)
+	Extra *TweetExtra `json:"extra,omitempty"`
 }
 
 // copy an arts.Article into our struct
