@@ -7,10 +7,10 @@ package main
 
 import (
 	"bufio"
-	"code.google.com/p/gcfg"
 	"flag"
 	"fmt"
 	"github.com/bcampbell/arts/util"
+	"gopkg.in/gcfg.v1"
 	//	"net"
 	"net/http"
 	"net/http/cookiejar"

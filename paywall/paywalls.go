@@ -4,8 +4,8 @@ package paywall
 // paywalls.
 
 import (
-	"code.google.com/p/gcfg"
 	"fmt"
+	"gopkg.in/gcfg.v1"
 	"io/ioutil"
 	"net/http"
 	"net/url"

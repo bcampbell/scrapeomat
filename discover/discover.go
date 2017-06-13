@@ -11,10 +11,10 @@ package discover
 //   logging
 
 import (
-	"code.google.com/p/cascadia"
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/purell"
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 	"net/http"
 	"net/url"
