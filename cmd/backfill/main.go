@@ -20,6 +20,7 @@ import (
 type Options struct {
 	dayFrom, dayTo string
 	nPages         int
+	nStart         int
 	//	list           bool // list scrapers then exit
 }
 
@@ -77,6 +78,7 @@ var scrapers map[string](func(*Options) error) = map[string](func(*Options) erro
 	"telegraph":         DoTelegraph,
 	"croydonadvertiser": DoCroydonAdvertiser,
 	"viceuk":            DoViceUK,
+	"eluniversal":       DoElUniversal,
 	//"thesun": DoTheSun,
 }
 
@@ -97,6 +99,7 @@ func main() {
 	opts := Options{}
 
 	flag.IntVar(&opts.nPages, "n", 0, "max num of search result pages to fetch")
+	flag.IntVar(&opts.nStart, "s", 0, "start value (page, whatever)")
 	flag.StringVar(&opts.dayFrom, "from", "", "from date")
 	flag.StringVar(&opts.dayTo, "to", "", "to date")
 	//flag.BoolVar(&opts.list, "l", false, "list available backfill scrapers, then exit")
