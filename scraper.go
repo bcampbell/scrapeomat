@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"semprini/scrapeomat/arc"
 	"semprini/scrapeomat/discover"
@@ -92,17 +93,24 @@ func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string
 		}
 		// If CookieFile set, load cookies here
 		if conf.CookieFile != "" {
+
 			cookieFile, err := os.Open(conf.CookieFile)
 			if err != nil {
 				return nil, err
 			}
 			defer cookieFile.Close()
-			_, err = biscuit.ReadCookies(cookieFile)
+			cookies, err := biscuit.ReadCookies(cookieFile)
 			if err != nil {
 				return nil, err
 			}
-			// TODO!!!!
-			//			jar.Set(cookies)
+			// TODO: use another cookie jar that lets us bulk-load without
+			// filtering by URL (SetCookies() kind of assumes you're handling a
+			// http response and want to filter dodgy cookies)
+			host, err := url.Parse(conf.URL)
+			if err != nil {
+				return nil, err
+			}
+			jar.SetCookies(host, cookies)
 		}
 		c = &http.Client{
 			Transport: util.NewPoliteTripper(),
