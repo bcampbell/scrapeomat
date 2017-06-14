@@ -318,6 +318,7 @@ func (store *Store) Fetch(filt *Filter) (<-chan FetchedArt, chan<- struct{}) {
 			if len(extra) > 0 {
 				err = json.Unmarshal(extra, &art.Extra)
 				if err != nil {
+					err = fmt.Errorf("error in 'Extra' (artid %d): %s", art.ID, err)
 					c <- FetchedArt{nil, err}
 					return
 				}
@@ -526,6 +527,7 @@ func (store *Store) FetchArt(artID int) (*Article, error) {
 	if len(extra) > 0 {
 		err = json.Unmarshal(extra, &art.Extra)
 		if err != nil {
+			err = fmt.Errorf("error in 'Extra' (artid %d): %s", art.ID, err)
 			return nil, err
 		}
 	}
