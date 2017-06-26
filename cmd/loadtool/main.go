@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"os"
 	"semprini/scrapeomat/store"
 	"strings"
@@ -33,8 +34,10 @@ func findJsonFiles(start string) ([]string, error) {
 }
 
 var opts struct {
-	databaseURL string
-	pubCode     string
+	db               string
+	pubCode          string
+	ignoreLoadErrors bool
+	htmlEscape       bool
 }
 
 func main() {
@@ -45,7 +48,9 @@ func main() {
 		os.Exit(2)
 	}
 
-	flag.StringVar(&opts.databaseURL, "db", "", "database connection `string` (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	flag.BoolVar(&opts.ignoreLoadErrors, "i", false, "ignore load errors - skip failed art and continue")
+	flag.BoolVar(&opts.htmlEscape, "e", false, "HTML-escape plain text content field")
+	flag.StringVar(&opts.db, "db", "", "database connection `string` (eg postgres://scrapeomat:password@localhost/scrapeomat)")
 	flag.StringVar(&opts.pubCode, "pubcode", "", "publication shortcode")
 	flag.Parse()
 
@@ -60,15 +65,71 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, f := range jsonFiles {
-		_, err = loadArt(f)
+	connStr := opts.db
+	if connStr == "" {
+		connStr = os.Getenv("SCRAPEOMAT_DB")
+	}
+
+	if connStr == "" {
+		fmt.Fprintf(os.Stderr, "ERROR: no database specified (use -db flag or set $SCRAPEOMAT_DB)\n")
+		os.Exit(1)
+	}
+	db, err := store.NewStore(connStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	batchsize := 500
+
+	for i := 0; i < len(jsonFiles); i += batchsize {
+		j := i + batchsize
+		if j > len(jsonFiles) {
+			j = len(jsonFiles)
+		}
+		err = loadBatch(db, jsonFiles[i:j])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 			os.Exit(1)
 		}
-		os.Exit(0)
+	}
+}
+
+func loadBatch(db *store.Store, filenames []string) error {
+	arts := map[string]*store.Article{}
+	urls := []string{}
+	for _, f := range filenames {
+		art, err := readArt(f)
+		if err != nil {
+			if opts.ignoreLoadErrors {
+				fmt.Fprintf(os.Stderr, "failed to load %s: %s\n", f, err)
+				continue
+			}
+			return fmt.Errorf("%s: %s", f, err)
+		}
+		if art.Publication.Code == "" {
+			return fmt.Errorf("Missing pubcode")
+		}
+		arts[art.CanonicalURL] = art
+		urls = append(urls, art.CanonicalURL)
 	}
 
+	newOnes, err := db.WhichAreNew(urls)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "loaded %d arts (%d new)\n", len(arts), len(newOnes))
+
+	for _, u := range newOnes {
+		art := arts[u]
+		_, err := db.Stash(art)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type Art struct {
@@ -81,9 +142,9 @@ type Art struct {
 	Section string `json:"section,omitempty"`
 }
 
-func loadArt(filename string) (*store.Article, error) {
+func readArt(filename string) (*store.Article, error) {
 
-	fmt.Fprintf(os.Stderr, "load %s\n", filename)
+	//fmt.Fprintf(os.Stderr, "load %s\n", filename)
 	var a Art
 
 	fp, err := os.Open(filename)
@@ -98,15 +159,17 @@ func loadArt(filename string) (*store.Article, error) {
 		return nil, err
 	}
 
-	fmt.Printf("%+v\n", ConvertArticle(&a))
+	//	fmt.Printf("%+v\n", ConvertArticle(&a))
 
-	return nil, nil
+	out := ConvertArticle(&a)
+	return out, nil
 }
 
 func ConvertArticle(src *Art) *store.Article {
+
 	art := &store.Article{
 		CanonicalURL: src.URL,
-		URLs:         []string{},
+		URLs:         []string{src.URL},
 		Headline:     src.Headline,
 		Authors:      []store.Author{},
 		Content:      src.Content,
@@ -117,8 +180,13 @@ func ConvertArticle(src *Art) *store.Article {
 		Section:     src.Section,
 	}
 
-	art.URLs = append(art.URLs, src.URL)
-	art.Authors = append(art.Authors, store.Author{Name: src.Byline})
+	if opts.htmlEscape {
+		art.Content = html.EscapeString(art.Content)
+	}
+
+	if src.Byline != "" {
+		art.Authors = append(art.Authors, store.Author{Name: src.Byline})
+	}
 	art.Publication.Code = opts.pubCode
 
 	return art
