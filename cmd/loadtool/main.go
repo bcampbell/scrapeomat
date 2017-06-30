@@ -1,5 +1,8 @@
 package main
 
+// load dumped articles into scrapeomat db.
+// work in progress - fix as required ;-)
+
 import (
 	"encoding/json"
 	"flag"
@@ -138,6 +141,7 @@ type Art struct {
 	Byline    string `json:"byline,omitempty"`
 	Content   string `json:"content,omitempty"`
 	Published string `json:"published,omitempty"`
+	Pubcode   string `json:"pubcode,omitempty"`
 	//	Publication Publication `json:"publication,omitempty"`
 	Section string `json:"section,omitempty"`
 }
@@ -187,7 +191,12 @@ func ConvertArticle(src *Art) *store.Article {
 	if src.Byline != "" {
 		art.Authors = append(art.Authors, store.Author{Name: src.Byline})
 	}
-	art.Publication.Code = opts.pubCode
+
+	if src.Pubcode != "" {
+		art.Publication.Code = src.Pubcode
+	} else {
+		art.Publication.Code = opts.pubCode
+	}
 
 	return art
 }
