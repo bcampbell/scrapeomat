@@ -79,6 +79,7 @@ var scrapers map[string](func(*Options) error) = map[string](func(*Options) erro
 	"croydonadvertiser": DoCroydonAdvertiser,
 	"viceuk":            DoViceUK,
 	"eluniversal":       DoElUniversal,
+	"milenio":           DoMilenio,
 	//"thesun": DoTheSun,
 }
 
@@ -187,6 +188,7 @@ func DoTheSun(opts *Options) error {
 	}
 	return nil
 }
+
 
 func fetchAndParse(client *http.Client, u string) (*html.Node, error) {
 	req, err := http.NewRequest("GET", u, nil)
