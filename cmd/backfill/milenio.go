@@ -13,6 +13,7 @@ import (
     "io/ioutil"
     "bytes"
     "os"
+    "time"
 )
 
 // use search ajax:
@@ -58,7 +59,7 @@ func DoMilenio(opts *Options) error {
             v.Set("orderby", "desc")
             v.Set("contentType", "")
             v.Set("page", strconv.Itoa(page))
-            v.Set("limit", "50")  // max is 200?
+            v.Set("limit", "100")  // max is 200?
             v.Set("seccion","")
             /*
             v.Set("iniDate", day.Format("2006-01-02"))
@@ -74,21 +75,38 @@ func DoMilenio(opts *Options) error {
             if err != nil {
                 return err
             }
-            resp, err := client.Do(req)
-            if err != nil {
-                return err
-            }
-            b, err := ioutil.ReadAll(resp.Body)
-            resp.Body.Close()
-            if err != nil {
-                return err
-            }
+            
+            b := []byte{}
+            retries := 0
+            skip := false
+            for {
 
-            if (resp.StatusCode != 200 ) {
-                fmt.Fprintf(os.Stderr,"HTTP %d: %s",resp.StatusCode, u)
+                resp, err := client.Do(req)
+                if err != nil {
+                    return err
+                }
+                b, err = ioutil.ReadAll(resp.Body)
+                resp.Body.Close()
+                if err != nil {
+                    return err
+                }
+
+                if (resp.StatusCode == 200 ) {
+                    break
+                }
+
+                retries++
+                if retries >10 {
+                    fmt.Fprintf(os.Stderr,"SKIP %s - too many reties. skip.", u)
+                    skip = true;
+                    break
+                }
+                fmt.Fprintf(os.Stderr,"HTTP %d: %s - retry in 5s",resp.StatusCode, u)
+                time.Sleep(5*time.Second)
+            }
+            if skip {
                 continue
             }
-
 
             // kill annoying wrapper
             b = bytes.TrimSpace(b)
