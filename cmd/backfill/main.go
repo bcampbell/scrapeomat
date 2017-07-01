@@ -30,6 +30,14 @@ func (opts *Options) DayRange() ([]time.Time, error) {
 		return nil, err
 	}
 
+    if from.IsZero() {
+        return nil,fmt.Errorf("missing 'from' day")
+    }
+    if to.IsZero() {
+        return nil,fmt.Errorf("missing 'to' day")
+    }
+
+
 	// make sure we're at start of day
 	from = time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
 
@@ -45,27 +53,26 @@ func (opts *Options) parseDays() (time.Time, time.Time, error) {
 	const dayFmt = "2006-01-02"
 	z := time.Time{}
 
-	var from, to time.Time
+    from := z
+    to := z
 	var err error
-	if opts.dayFrom == "" {
-		return z, z, fmt.Errorf("'from' day required")
-	}
-	from, err = time.Parse(dayFmt, opts.dayFrom)
-	if err != nil {
-		return z, z, fmt.Errorf("bad 'from' day (%s)", err)
-	}
+	if opts.dayFrom != "" {
+	    from, err = time.Parse(dayFmt, opts.dayFrom)
+        if err != nil {
+            return z, z, fmt.Errorf("bad 'from' day (%s)", err)
+        }
+    }
 
-	if opts.dayTo == "" {
-		return z, z, fmt.Errorf("'to' day required")
-	}
-	to, err = time.Parse(dayFmt, opts.dayTo)
-	if err != nil {
-		return z, z, fmt.Errorf("bad 'to' day (%s)", err)
-	}
+	if opts.dayTo != "" {
+        to, err = time.Parse(dayFmt, opts.dayTo)
+        if err != nil {
+            return z, z, fmt.Errorf("bad 'to' day (%s)", err)
+        }
 
-	if to.Before(from) {
-		return z, z, fmt.Errorf("bad date range ('from' is after 'to')")
-	}
+	    if !from.IsZero() && to.Before(from) {
+		    return z, z, fmt.Errorf("bad date range ('from' is after 'to')")
+        }
+    }
 
 	return from, to, nil
 }
@@ -80,6 +87,7 @@ var scrapers map[string](func(*Options) error) = map[string](func(*Options) erro
 	"viceuk":            DoViceUK,
 	"eluniversal":       DoElUniversal,
 	"milenio":           DoMilenio,
+	"excelsior":         DoExcelsior,
 	//"thesun": DoTheSun,
 }
 
