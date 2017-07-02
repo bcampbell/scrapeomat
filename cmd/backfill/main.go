@@ -30,13 +30,12 @@ func (opts *Options) DayRange() ([]time.Time, error) {
 		return nil, err
 	}
 
-    if from.IsZero() {
-        return nil,fmt.Errorf("missing 'from' day")
-    }
-    if to.IsZero() {
-        return nil,fmt.Errorf("missing 'to' day")
-    }
-
+	if from.IsZero() {
+		return nil, fmt.Errorf("missing 'from' day")
+	}
+	if to.IsZero() {
+		return nil, fmt.Errorf("missing 'to' day")
+	}
 
 	// make sure we're at start of day
 	from = time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
@@ -53,26 +52,26 @@ func (opts *Options) parseDays() (time.Time, time.Time, error) {
 	const dayFmt = "2006-01-02"
 	z := time.Time{}
 
-    from := z
-    to := z
+	from := z
+	to := z
 	var err error
 	if opts.dayFrom != "" {
-	    from, err = time.Parse(dayFmt, opts.dayFrom)
-        if err != nil {
-            return z, z, fmt.Errorf("bad 'from' day (%s)", err)
-        }
-    }
+		from, err = time.Parse(dayFmt, opts.dayFrom)
+		if err != nil {
+			return z, z, fmt.Errorf("bad 'from' day (%s)", err)
+		}
+	}
 
 	if opts.dayTo != "" {
-        to, err = time.Parse(dayFmt, opts.dayTo)
-        if err != nil {
-            return z, z, fmt.Errorf("bad 'to' day (%s)", err)
-        }
+		to, err = time.Parse(dayFmt, opts.dayTo)
+		if err != nil {
+			return z, z, fmt.Errorf("bad 'to' day (%s)", err)
+		}
 
-	    if !from.IsZero() && to.Before(from) {
-		    return z, z, fmt.Errorf("bad date range ('from' is after 'to')")
-        }
-    }
+		if !from.IsZero() && to.Before(from) {
+			return z, z, fmt.Errorf("bad date range ('from' is after 'to')")
+		}
+	}
 
 	return from, to, nil
 }
@@ -88,6 +87,7 @@ var scrapers map[string](func(*Options) error) = map[string](func(*Options) erro
 	"eluniversal":       DoElUniversal,
 	"milenio":           DoMilenio,
 	"excelsior":         DoExcelsior,
+	"jornada":           DoJornada,
 	//"thesun": DoTheSun,
 }
 
@@ -196,7 +196,6 @@ func DoTheSun(opts *Options) error {
 	}
 	return nil
 }
-
 
 func fetchAndParse(client *http.Client, u string) (*html.Node, error) {
 	req, err := http.NewRequest("GET", u, nil)
