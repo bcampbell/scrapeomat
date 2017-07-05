@@ -27,6 +27,10 @@ or so. In these cases, the list of URLs can be overwhelmingly large.
 
 TODO: document any progress in filtering sitemaps by rough date ranges
 
+## wp-json
+
+TODO
+
 
 ## Site-specific Hackery
 

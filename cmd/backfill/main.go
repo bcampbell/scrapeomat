@@ -88,6 +88,7 @@ var scrapers map[string](func(*Options) error) = map[string](func(*Options) erro
 	"milenio":           DoMilenio,
 	"excelsior":         DoExcelsior,
 	"jornada":           DoJornada,
+	"sdpnoticias":       DoSDPNoticias,
 	//"thesun": DoTheSun,
 }
 
