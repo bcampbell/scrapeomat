@@ -1,14 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"github.com/bcampbell/arts/util"
-	"net/http"
-	//"net/url"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"github.com/bcampbell/arts/util"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -51,7 +52,7 @@ func main() {
 	flag.Usage = func() {
 
 		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "%s [OPTIONS] %s\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s [OPTIONS] <siteURL>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Grab article lists from a wordpress site using wp-json API\n")
 		flag.PrintDefaults()
 	}
@@ -89,8 +90,33 @@ func run(siteURL string, opts *Options) error {
 		Transport: util.NewPoliteTripper(),
 	}
 
+	base, err := url.Parse(siteURL)
+	if err != nil {
+		return err
+	}
+
+	dayFrom, dayTo, err := opts.parseDays()
+	if err != nil {
+		return err
+	}
+	// TODO: use X-WP-Total/X-WP-TotalPages header for pagination!
+	page := 1
 	for {
-		u := siteURL + "/wp-json/wp/v2/posts"
+		params := url.Values{}
+		params.Set("page", strconv.Itoa(page))
+
+		params.Set("per_page", "100")
+
+		if !dayFrom.IsZero() {
+			params.Set("after", dayFrom.Add(-1*time.Second).Format("2006-01-02T15:04:05"))
+		}
+		if !dayTo.IsZero() {
+			params.Set("before", dayTo.Add(24*time.Hour).Format("2006-01-02T15:04:05"))
+		}
+
+		u := siteURL + "/wp-json/wp/v2/posts?" + params.Encode()
+
+		fmt.Fprintf(os.Stderr, "fetch %s\n", u)
 
 		resp, err := client.Get(u)
 		if err != nil {
@@ -102,15 +128,30 @@ func run(siteURL string, opts *Options) error {
 		if err != nil {
 			return err
 		}
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("%s: %d\n", resp.StatusCode)
+		}
+
 		posts := []Post{}
 
 		err = json.Unmarshal(raw, &posts)
 		if err != nil {
 			return err
 		}
-		for _, p := range posts {
-			fmt.Println(p.Link)
+		if len(posts) == 0 {
+			fmt.Fprintf(os.Stderr, "done.\n")
+			break
 		}
-		return nil
+
+		for _, p := range posts {
+			full, err := base.Parse(p.Link)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "WARN: bad url '%s'", p.Link)
+				continue
+			}
+			fmt.Println(full.String())
+		}
+		page++
 	}
+	return nil
 }
