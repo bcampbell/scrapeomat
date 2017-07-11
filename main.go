@@ -9,11 +9,8 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/bcampbell/arts/util"
 	"gopkg.in/gcfg.v1"
 	//	"net"
-	"net/http"
-	"net/http/cookiejar"
 	"os"
 	"os/signal"
 	"path"
@@ -89,21 +86,6 @@ options:
 		return
 	}
 
-	// an http client which uses cookies and doesn't hammer the server
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		panic(err)
-	}
-
-	politeClient := &http.Client{
-		Transport: util.NewPoliteTripper(),
-	}
-
-	politeClientWithCookies := &http.Client{
-		Transport: util.NewPoliteTripper(),
-		Jar:       jar,
-	}
-
 	// which sites?
 	targetSites := flag.Args()
 	if len(targetSites) == 1 && targetSites[0] == "ALL" {
@@ -128,18 +110,12 @@ options:
 	if opts.discover {
 		// just run discovery phase, print out article URLs, then exit
 		for _, scraper := range targetScrapers {
-			var client *http.Client
-			if scraper.Conf.Cookies {
-				client = politeClientWithCookies
-			} else {
-				client = politeClient
-			}
-			err := scraper.Login(client)
+			err := scraper.Login()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%s\n", err)
 				continue
 			}
-			foundArts, _ := scraper.Discover(client)
+			foundArts, _ := scraper.Discover()
 			for _, a := range foundArts {
 				fmt.Println(a)
 			}
@@ -198,15 +174,7 @@ options:
 
 		// invoke scraper
 		for _, scraper := range targetScrapers {
-			var client *http.Client
-			if scraper.Conf.Cookies {
-				scraper.infoLog.Printf("using cookies")
-				client = politeClientWithCookies
-			} else {
-				scraper.infoLog.Printf("not using cookies")
-				client = politeClient
-			}
-			err = scraper.DoRunFromList(artURLs, db, client, opts.updateMode)
+			err = scraper.DoRunFromList(artURLs, db, opts.updateMode)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 				os.Exit(1)
@@ -235,13 +203,7 @@ options:
 		wg.Add(1)
 		go func(s *Scraper) {
 			defer wg.Done()
-			var client *http.Client
-			if s.Conf.Cookies {
-				client = politeClientWithCookies
-			} else {
-				client = politeClient
-			}
-			s.Start(db, client)
+			s.Start(db)
 		}(scraper)
 	}
 
