@@ -1,7 +1,7 @@
 Scrapeomat API docs
 ===================
 
-GET http://foo.scumways.com/ukarts/api//api/slurp
+GET http://<host>/<path>/api/slurp
 
 Fetches full articles from the scrapeomat store.
 

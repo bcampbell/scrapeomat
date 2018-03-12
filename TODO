@@ -6,3 +6,4 @@ slurpserver: show proper IP address in log when behind proxy server
 slurpserver: simple API token access (and show token in log)
 scrapeomat: when scraping from list (-i), show how many articles already in database
 summary API+tool: add option to batch by week
+WARC archive read/write - should now use github.com/bcampbell/warc
