@@ -16,10 +16,12 @@ import (
 var opts struct {
 	nonrecursive bool
 	verbose      bool
-	fromDate     string
-	toDate       string
-	from         time.Time
-	to           time.Time
+
+	fromDate    string
+	toDate      string
+	filterIndex bool
+	from        time.Time
+	to          time.Time
 }
 
 type sitemapfile struct {
@@ -30,7 +32,8 @@ type sitemapfile struct {
 type SitemapIndex struct {
 	//XMLName xml.Name `xml:"sitemapindex"`
 	Sitemap []struct {
-		Loc string `xml:"loc"`
+		Loc     string `xml:"loc"`
+		LastMod string `xml:"lastmod"`
 	} `xml:"sitemap"`
 }
 type URLset struct {
@@ -54,10 +57,11 @@ Options:
 }
 
 var stats struct {
-	fetchCnt     int
-	fetchErrs    int
-	artsAccepted int
-	artsRejected int
+	fetchCnt      int
+	fetchErrs     int
+	fetchRejected int
+	artsAccepted  int
+	artsRejected  int
 }
 
 //u := "https://www.thesun.co.uk/sitemap.xml?yyyy=2016&mm=06&dd=20"
@@ -68,8 +72,9 @@ func main() {
 	}
 
 	flag.Usage = usage
-	flag.StringVar(&opts.fromDate, "from", "", "ignore articles before this YYYY-MM-DD date")
-	flag.StringVar(&opts.toDate, "to", "", "ignore articles after this YYYY-MM-DD date")
+	flag.StringVar(&opts.fromDate, "from", "", "ignore links with LastMod before YYYY-MM-DD date")
+	flag.StringVar(&opts.toDate, "to", "", "ignore links with LastMod after YYYY-MM-DD date")
+	flag.BoolVar(&opts.filterIndex, "f", false, "apply date filter to index file link too?")
 	flag.BoolVar(&opts.nonrecursive, "n", false, "non-recursive")
 	flag.BoolVar(&opts.verbose, "v", false, "verbose")
 	flag.Parse()
@@ -106,9 +111,25 @@ func main() {
 	}
 
 	if opts.verbose {
-		fmt.Fprintf(os.Stderr, "fetched %d files (%d errors), yielded %d links (%d rejected)\n",
-			stats.fetchCnt, stats.fetchErrs, stats.artsAccepted, stats.artsRejected)
+		fmt.Fprintf(os.Stderr, "fetched %d files (%d errors, %d skipped), yielded %d links (%d rejected)\n",
+			stats.fetchCnt, stats.fetchErrs, stats.fetchRejected, stats.artsAccepted, stats.artsRejected)
 	}
+}
+
+// try a couple of likely formats for LastMod timestamps
+func parseLastMod(lastMod string) (time.Time, error) {
+	var t time.Time
+	var err error
+	t, err = time.Parse(time.RFC3339, lastMod)
+	if err == nil {
+		return t, nil
+	}
+	t, err = time.Parse("2006-01-02", lastMod)
+	if err == nil {
+		return t, nil
+	}
+
+	return t, err
 }
 
 // fetch and process a single sitemap xml (file or url)
@@ -156,9 +177,9 @@ func doit(client *http.Client, u string) error {
 	// dump out article links
 	for _, art := range result.URLset.URL {
 		accept := true
-		if !opts.from.IsZero() || !opts.to.IsZero() {
+		if (!opts.from.IsZero() || !opts.to.IsZero()) && art.LastMod != "" {
 			var t time.Time
-			t, err = time.Parse(time.RFC3339, art.LastMod)
+			t, err = parseLastMod(art.LastMod)
 			if err == nil {
 				if !opts.from.IsZero() && t.Before(opts.from) {
 					accept = false // too early
@@ -187,11 +208,32 @@ func doit(client *http.Client, u string) error {
 		if opts.nonrecursive {
 			//fmt.Println(foo.Loc)
 		} else {
-			err := doit(client, foo.Loc)
-			if err != nil {
-				return err
+			accept := true
+			if (opts.filterIndex && !opts.from.IsZero() || !opts.to.IsZero()) && foo.LastMod != "" {
+				var t time.Time
+				t, err = parseLastMod(foo.LastMod)
+				if err == nil {
+					if !opts.from.IsZero() && t.Before(opts.from) {
+						accept = false // too early
+					}
+					if !opts.to.IsZero() && (t.Equal(opts.to) || t.After(opts.to)) {
+						accept = false // too late
+					}
+				} else {
+					fmt.Fprintf(os.Stderr, "WARN: bad index LastMod (%s) in %s (rejecting)\n", foo.LastMod, u)
+					accept = false
+				}
+
 			}
 
+			if accept {
+				err := doit(client, foo.Loc)
+				if err != nil {
+					return err
+				}
+			} else {
+				stats.fetchRejected++
+			}
 		}
 	}
 	return nil
