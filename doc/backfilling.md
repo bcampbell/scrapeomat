@@ -25,6 +25,15 @@ Some sites have _really_ comprehensive sitemaps. For example, the
 Independent seems to list it's entire archive of articles back to 2012
 or so. In these cases, the list of URLs can be overwhelmingly large.
 
+Look at a sites `robots.txt` file to see what sitemaps it has. There
+will often be multiple starting points there.
+
+The usefulness of the `LastMod` timestamps vary by site. Some sites
+set it to the time the sitemap was generated, which might be very
+recent, even for archival material.
+For other sites, it's a useful way to filter just the articles
+you want.
+
 TODO: document any progress in filtering sitemaps by rough date ranges
 
 ## wp-json
