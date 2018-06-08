@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 )
 
+// recursively grab list of all json files under start dir
 func findJsonFiles(start string) ([]string, error) {
 	files := []string{}
 	err := filepath.Walk(start, func(path string, info os.FileInfo, err error) error {
@@ -67,6 +68,19 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
 	}
+
+	/*
+		// dump out for debugging
+		for _, f := range jsonFiles {
+			art, err := readArt(f)
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Printf("%+v\n", art)
+		}
+		return
+	*/
 
 	connStr := opts.db
 	if connStr == "" {
@@ -136,14 +150,11 @@ func loadBatch(db *store.Store, filenames []string) error {
 }
 
 type Art struct {
-	URL       string `json:"url,omitempty"`
-	Headline  string `json:"headline,omitempty"`
-	Byline    string `json:"byline,omitempty"`
-	Content   string `json:"content,omitempty"`
-	Published string `json:"published,omitempty"`
-	Pubcode   string `json:"pubcode,omitempty"`
-	//	Publication Publication `json:"publication,omitempty"`
-	Section string `json:"section,omitempty"`
+	store.Article
+	// some convenience fields
+	URL     string `json:"url,omitempty"`
+	Byline  string `json:"byline,omitempty"`
+	Pubcode string `json:"pubcode,omitempty"`
 }
 
 func readArt(filename string) (*store.Article, error) {
@@ -163,40 +174,33 @@ func readArt(filename string) (*store.Article, error) {
 		return nil, err
 	}
 
-	//	fmt.Printf("%+v\n", ConvertArticle(&a))
-
 	out := ConvertArticle(&a)
 	return out, nil
 }
 
 func ConvertArticle(src *Art) *store.Article {
 
-	art := &store.Article{
-		CanonicalURL: src.URL,
-		URLs:         []string{src.URL},
-		Headline:     src.Headline,
-		Authors:      []store.Author{},
-		Content:      src.Content,
-		Published:    src.Published,
-		//		Updated:      src.Updated,
-		Publication: store.Publication{},
-		Keywords:    []store.Keyword{},
-		Section:     src.Section,
+	if src.URL != "" {
+		src.CanonicalURL = src.URL
+		src.URLs = []string{src.URL}
 	}
 
 	if opts.htmlEscape {
-		art.Content = html.EscapeString(art.Content)
+		src.Content = html.EscapeString(src.Content)
 	}
 
+	// TODO: handle byline better?
 	if src.Byline != "" {
-		art.Authors = append(art.Authors, store.Author{Name: src.Byline})
+		src.Authors = append(src.Authors, store.Author{Name: src.Byline})
 	}
 
-	if src.Pubcode != "" {
-		art.Publication.Code = src.Pubcode
-	} else {
-		art.Publication.Code = opts.pubCode
+	// fill in pubcode if missing
+	if src.Publication.Code == "" {
+		if src.Pubcode != "" {
+			src.Publication.Code = src.Pubcode
+		} else {
+			src.Publication.Code = opts.pubCode
+		}
 	}
-
-	return art
+	return &src.Article
 }
