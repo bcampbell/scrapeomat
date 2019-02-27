@@ -7,9 +7,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/bcampbell/scrapeomat/store"
 	"log"
 	"os"
-	"semprini/scrapeomat/store"
 )
 
 var opts struct {

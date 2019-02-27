@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	//	"semprini/scrapeomat/paywall"
+	//	"github.com/bcampbell/scrapeomat/paywall"
 	"time"
 )
 
@@ -244,10 +244,10 @@ func DoFT(opts *Options) error {
 		s := &Searcher{
 			SearchURL: searchURL,
 			Params:    url.Values{
-			/*
-				"q":   []string{""},    // querystring
-				"rpp": []string{"100"}, // results-per-page
-			*/
+				/*
+					"q":   []string{""},    // querystring
+					"rpp": []string{"100"}, // results-per-page
+				*/
 			},
 			PageParam:     "p",
 			ResultLinkSel: cascadia.MustCompile(".results .result h3 a"),

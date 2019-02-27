@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	//	"semprini/scrapeomat/store"
+	//	"github.com/bcampbell/scrapeomat/store"
 )
 
 type ArticleCountResult struct {

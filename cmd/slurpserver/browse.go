@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/bcampbell/scrapeomat/store"
 	"html/template"
 	"net/http"
 	"os"
-	"semprini/scrapeomat/store"
 	"strconv"
 )
 

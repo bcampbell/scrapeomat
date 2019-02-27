@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/bcampbell/scrapeomat/slurp"
 	"os"
-	"semprini/scrapeomat/slurp"
 )
 
 var filtParams struct {

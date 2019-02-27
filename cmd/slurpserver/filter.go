@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/bcampbell/scrapeomat/store"
 	"net/http"
 	"net/url"
-	"semprini/scrapeomat/store"
 	"strconv"
 	"time"
 )

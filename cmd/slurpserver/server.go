@@ -3,11 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/bcampbell/scrapeomat/store"
 	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/gorilla/handlers"
 	"html/template"
 	"net/http"
-	"semprini/scrapeomat/store"
 	//"time"
 )
 

@@ -23,6 +23,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/bcampbell/arts/arts"
+	"github.com/bcampbell/scrapeomat/store"
 	"github.com/bcampbell/warc/warc"
 	"io"
 	"io/ioutil"
@@ -30,7 +31,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"semprini/scrapeomat/store"
 	"strings"
 	"sync"
 )

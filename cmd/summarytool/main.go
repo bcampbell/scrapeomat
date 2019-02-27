@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/bcampbell/scrapeomat/slurp"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
-	"semprini/scrapeomat/slurp"
 	"strings"
 	"time"
 )
