@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"github.com/bcampbell/arts/arts"
 	"github.com/bcampbell/scrapeomat/store"
-	"github.com/bcampbell/warc/warc"
+	"github.com/bcampbell/warc"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -35,7 +35,7 @@ import (
 	"sync"
 )
 
-func worker(db *store.Store, fileChan chan string, wg *sync.WaitGroup) {
+func worker(db store.Store, fileChan chan string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for warcFile := range fileChan {
@@ -44,7 +44,7 @@ func worker(db *store.Store, fileChan chan string, wg *sync.WaitGroup) {
 }
 
 // scrape a .warc file, stash result in db
-func process(db *store.Store, f string) {
+func process(db store.Store, f string) {
 	scraped, err := fromWARC(f)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s FAILED: %s\n", f, err)
@@ -117,7 +117,7 @@ var opts struct {
 	forceReplace bool
 }
 
-func openStore(connStr string) (*store.Store, error) {
+func openStore(connStr string) (store.Store, error) {
 	if connStr == "" {
 		connStr = os.Getenv("SCRAPEOMAT_DB")
 	}
@@ -126,7 +126,7 @@ func openStore(connStr string) (*store.Store, error) {
 		return nil, fmt.Errorf("no database specified (use -db flag or set $SCRAPEOMAT_DB)")
 	}
 
-	db, err := store.NewStore(connStr)
+	db, err := store.NewSQLStore(connStr)
 	if err != nil {
 		return nil, err
 	}

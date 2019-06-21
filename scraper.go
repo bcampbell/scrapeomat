@@ -158,7 +158,7 @@ func (scraper *Scraper) Discover() ([]string, error) {
 }
 
 // start the scraper, running it at regular intervals
-func (scraper *Scraper) Start(db *store.Store) {
+func (scraper *Scraper) Start(db store.Store) {
 	for {
 		lastRun := time.Now()
 		err := scraper.DoRun(db)
@@ -190,7 +190,7 @@ func (scraper *Scraper) Stop() {
 }
 
 // perform a single scraper run
-func (scraper *Scraper) DoRun(db *store.Store) error {
+func (scraper *Scraper) DoRun(db store.Store) error {
 
 	scraper.infoLog.Printf("start run\n")
 	// reset the stats
@@ -238,7 +238,7 @@ func uniq(in []string) []string {
 }
 
 // perform a single scraper run, using a list of article URLS instead of invoking the discovery
-func (scraper *Scraper) DoRunFromList(arts []string, db *store.Store, updateMode bool) error {
+func (scraper *Scraper) DoRunFromList(arts []string, db store.Store, updateMode bool) error {
 
 	scraper.infoLog.Printf("start run from list\n")
 	// reset the stats
@@ -302,7 +302,7 @@ func (scraper *Scraper) checkQuit() bool {
 	}
 }
 
-func (scraper *Scraper) FetchAndStash(newArts []string, db *store.Store, updateMode bool) error {
+func (scraper *Scraper) FetchAndStash(newArts []string, db store.Store, updateMode bool) error {
 	//scraper.infoLog.Printf("Start scraping\n")
 
 	// fetch and extract 'em

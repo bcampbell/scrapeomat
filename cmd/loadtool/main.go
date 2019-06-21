@@ -91,7 +91,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ERROR: no database specified (use -db flag or set $SCRAPEOMAT_DB)\n")
 		os.Exit(1)
 	}
-	db, err := store.NewStore(connStr)
+	db, err := store.NewSQLStore(connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)
@@ -113,7 +113,7 @@ func main() {
 	}
 }
 
-func loadBatch(db *store.Store, filenames []string) error {
+func loadBatch(db store.Store, filenames []string) error {
 	arts := map[string]*store.Article{}
 	urls := []string{}
 	for _, f := range filenames {

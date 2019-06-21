@@ -133,7 +133,7 @@ options:
 		os.Exit(1)
 	}
 
-	db, err := store.NewStore(connStr)
+	db, err := store.NewSQLStore(connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)

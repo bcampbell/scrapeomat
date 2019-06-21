@@ -31,7 +31,7 @@ type SlurpServer struct {
 	Port    int
 	Prefix  string
 
-	db           *store.Store
+	db           store.Store
 	enableBrowse bool
 	tmpls        struct {
 		browse *template.Template
@@ -39,7 +39,7 @@ type SlurpServer struct {
 	}
 }
 
-func NewServer(db *store.Store, enableBrowse bool, port int, prefix string, infoLog Logger, errLog Logger) (*SlurpServer, error) {
+func NewServer(db store.Store, enableBrowse bool, port int, prefix string, infoLog Logger, errLog Logger) (*SlurpServer, error) {
 	srv := &SlurpServer{db: db, enableBrowse: enableBrowse, Port: port, Prefix: prefix, InfoLog: infoLog, ErrLog: errLog}
 
 	baseTmpl := string(MustAsset("templates/base.html"))

@@ -12,7 +12,7 @@ func ExampleBuildWhere() {
 		PubTo:    time.Date(2010, 2, 1, 0, 0, 0, 0, time.UTC),
 		PubCodes: []string{"dailynews", "dailyshoes"},
 	}
-	s, p := buildWhere(filt)
+	s, p := buildWhere(filt).Render(1, " AND ")
 
 	fmt.Println(s)
 	fmt.Println(p)

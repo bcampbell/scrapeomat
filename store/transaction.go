@@ -7,7 +7,7 @@ import (
 )
 
 type Transaction struct {
-	s   *Store
+	s   *SQLStore
 	tx  *sql.Tx
 	err error
 }
@@ -19,7 +19,7 @@ type Txer interface {
 	Stash(art *Article) int
 	Err() error
 }*/
-func newTransaction(store *Store) *Transaction {
+func newTransaction(store *SQLStore) *Transaction {
 	tx, err := store.db.Begin()
 	if err != nil {
 		// transaction is borked, but user can keep calling it, and
