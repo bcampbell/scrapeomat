@@ -75,7 +75,7 @@ func main() {
 	flag.StringVar(&opts.fromDate, "from", "", "ignore links with LastMod before YYYY-MM-DD date")
 	flag.StringVar(&opts.toDate, "to", "", "ignore links with LastMod after YYYY-MM-DD date")
 	flag.BoolVar(&opts.filterIndex, "f", false, "apply date filter to index file link too?")
-	flag.BoolVar(&opts.nonrecursive, "n", false, "non-recursive")
+	flag.BoolVar(&opts.nonrecursive, "n", false, "non-recursive (don't follow <sitemap> links)")
 	flag.BoolVar(&opts.verbose, "v", false, "verbose")
 	flag.Parse()
 
