@@ -1,9 +1,10 @@
-package store
+package sqlstore
 
 import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/bcampbell/scrapeomat/store"
 )
 
 type Transaction struct {
@@ -51,7 +52,7 @@ func (t *Transaction) Close() error {
 	return t.err
 }
 
-func (t *Transaction) Stash(art *Article) int {
+func (t *Transaction) Stash(art *store.Article) int {
 	if t.err != nil {
 		return 0
 	}
@@ -176,7 +177,7 @@ func (t *Transaction) Stash(art *Article) int {
 	return artID
 }
 
-func (t *Transaction) findOrCreatePublication(pub *Publication) (int, error) {
+func (t *Transaction) findOrCreatePublication(pub *store.Publication) (int, error) {
 	pubID, err := t.findPublication(pub)
 	if err != nil {
 		return 0, err
@@ -188,7 +189,7 @@ func (t *Transaction) findOrCreatePublication(pub *Publication) (int, error) {
 }
 
 // returns 0 if no match
-func (t *Transaction) findPublication(pub *Publication) (int, error) {
+func (t *Transaction) findPublication(pub *store.Publication) (int, error) {
 	var pubID int
 	var err error
 
@@ -228,7 +229,7 @@ func (t *Transaction) findPublication(pub *Publication) (int, error) {
 	return 0, nil // no match
 }
 
-func (t *Transaction) createPublication(pub *Publication) (int, error) {
+func (t *Transaction) createPublication(pub *store.Publication) (int, error) {
 	// create new
 	var pubID int
 	err := t.tx.QueryRow(`INSERT INTO publication(code,name,domain) VALUES($1,$2,$3) RETURNING id`,

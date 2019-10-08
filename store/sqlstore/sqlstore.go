@@ -1,27 +1,41 @@
-package store
+package sqlstore
 
 import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/bcampbell/scrapeomat/store"
 	"github.com/lib/pq"
 	"regexp"
 	"strings"
 	"time"
 )
 
-// SQLStore stashes articles in a postgresql db
+type nullLogger struct{}
+
+func (l nullLogger) Printf(format string, v ...interface{}) {
+}
+
+// SQLStore stashes articles in an SQL database
 type SQLStore struct {
 	db       *sql.DB
 	loc      *time.Location
-	ErrLog   Logger
-	DebugLog Logger
+	ErrLog   store.Logger
+	DebugLog store.Logger
 }
 
-// eg "postgres://username@localhost/dbname"
-func NewSQLStore(connStr string) (*SQLStore, error) {
+type SQLArtIter struct {
+	rows *sql.Rows
+	ss   *SQLStore
+	err  error
+}
 
-	db, err := sql.Open("postgres", connStr)
+// eg "postgres", "postgres://username@localhost/dbname"
+// eg "sqlite3", "/tmp/foo.db"
+func NewSQLStore(driver string, connStr string) (*SQLStore, error) {
+
+	//db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open(driver, connStr)
 	if err != nil {
 		return nil, err
 	}
@@ -39,29 +53,29 @@ func NewSQLStore(connStr string) (*SQLStore, error) {
 		return nil, err
 	}
 
-	store := SQLStore{
+	ss := SQLStore{
 		db:       db,
 		loc:      loc,
 		ErrLog:   nullLogger{}, // TODO: should log to stderr by default?
 		DebugLog: nullLogger{},
 	}
 
-	return &store, nil
+	return &ss, nil
 }
 
-func (store *SQLStore) Close() {
-	if store.db != nil {
-		store.db.Close()
-		store.db = nil
+func (ss *SQLStore) Close() {
+	if ss.db != nil {
+		ss.db.Close()
+		ss.db = nil
 	}
 }
 
-func (store *SQLStore) Begin() *Transaction {
-	return newTransaction(store)
+func (ss *SQLStore) Begin() *Transaction {
+	return newTransaction(ss)
 }
 
-func (store *SQLStore) Stash(art *Article) (int, error) {
-	tx := store.Begin()
+func (ss *SQLStore) Stash(art *store.Article) (int, error) {
+	tx := ss.Begin()
 	artID := tx.Stash(art)
 	err := tx.Close()
 	return artID, err
@@ -76,9 +90,9 @@ var timeFmts = []string{
 	"2006-01-02",
 }
 
-func (store *SQLStore) cvtTime(timestamp string) pq.NullTime {
+func (ss *SQLStore) cvtTime(timestamp string) pq.NullTime {
 	for _, layout := range timeFmts {
-		t, err := time.ParseInLocation(layout, timestamp, store.loc)
+		t, err := time.ParseInLocation(layout, timestamp, ss.loc)
 		if err == nil {
 			return pq.NullTime{Time: t, Valid: true}
 		}
@@ -92,7 +106,7 @@ var datePat = regexp.MustCompile(`^\d\d\d\d-\d\d-\d\d`)
 // returns 0,nil if not found
 /*
 TODO: handle multiple matches...
-func (store *SQLStore) FindArticle(artURLs []string) (int, error) {
+func (ss *SQLStore) FindArticle(artURLs []string) (int, error) {
 
 	frags := make(fragList, 0, len(artURLs))
 	for _, u := range artURLs {
@@ -101,7 +115,7 @@ func (store *SQLStore) FindArticle(artURLs []string) (int, error) {
 	foo, params := frags.Render(1, ",")
 	var artID int
 	s := `SELECT DISTINCT article_id FROM article_url WHERE url IN (` + foo + `)`
-	err := store.db.QueryRow(s, params...).Scan(&artID)
+	err := ss.db.QueryRow(s, params...).Scan(&artID)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	} else if err != nil {
@@ -117,7 +131,7 @@ func (store *SQLStore) FindArticle(artURLs []string) (int, error) {
 // know which ones match which URLs.
 // remember that there can be multiple URLs for a single article, AND also multiple articles can
 // share the same URL (hopefully much much more rare).
-func (store *SQLStore) FindURLs(urls []string) ([]int, error) {
+func (ss *SQLStore) FindURLs(urls []string) ([]int, error) {
 
 	params := make([]interface{}, len(urls))
 	placeholders := make([]string, len(urls))
@@ -127,7 +141,7 @@ func (store *SQLStore) FindURLs(urls []string) ([]int, error) {
 	}
 
 	s := `SELECT distinct article_id FROM article_url WHERE url IN (` + strings.Join(placeholders, ",") + `)`
-	rows, err := store.db.Query(s, params...)
+	rows, err := ss.db.Query(s, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -150,9 +164,9 @@ func (store *SQLStore) FindURLs(urls []string) ([]int, error) {
 
 // NOTE: remember article urls don't _have_ to be unique. If you only pass
 // canonical urls in here you should be ok :-)
-func (store *SQLStore) WhichAreNew(artURLs []string) ([]string, error) {
+func (ss *SQLStore) WhichAreNew(artURLs []string) ([]string, error) {
 
-	stmt, err := store.db.Prepare(`SELECT article_id FROM article_url WHERE url=$1`)
+	stmt, err := ss.db.Prepare(`SELECT article_id FROM article_url WHERE url=$1`)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +184,7 @@ func (store *SQLStore) WhichAreNew(artURLs []string) ([]string, error) {
 	return newArts, nil
 }
 
-func buildWhere(filt *Filter) *fragList {
+func buildWhere(filt *store.Filter) *fragList {
 	//var idx int = 1
 	frags := &fragList{}
 
@@ -213,7 +227,7 @@ func buildWhere(filt *Filter) *fragList {
 	return frags
 }
 
-func (store *SQLStore) FetchCount(filt *Filter) (int, error) {
+func (ss *SQLStore) FetchCount(filt *store.Filter) (int, error) {
 	whereClause, params := buildWhere(filt).Render(1, " AND ")
 	if whereClause != "" {
 		whereClause = "WHERE " + whereClause
@@ -222,112 +236,101 @@ func (store *SQLStore) FetchCount(filt *Filter) (int, error) {
            FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
            ` + whereClause
 	var cnt int
-	err := store.db.QueryRow(q, params...).Scan(&cnt)
+	err := ss.db.QueryRow(q, params...).Scan(&cnt)
 	return cnt, err
 }
 
-func (store *SQLStore) Fetch(filt *Filter) (<-chan FetchedArt, chan<- struct{}) {
+func (ss *SQLStore) Fetch(filt *store.Filter) (store.ArtIter, error) {
 
 	whereClause, params := buildWhere(filt).Render(1, " AND ")
 	if whereClause != "" {
 		whereClause = "WHERE " + whereClause
 	}
 
-	c := make(chan FetchedArt)
-	abort := make(chan struct{}, 1) // buffering required to avoid deadlock TODO: is there a more elegant solution?
-	go func() {
-		defer close(c)
-		defer close(abort)
-
-		q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
+	q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
 	               ` + whereClause + ` ORDER BY id`
 
-		if filt.Count > 0 {
-			q += fmt.Sprintf(" LIMIT %d", filt.Count)
-		}
+	if filt.Count > 0 {
+		q += fmt.Sprintf(" LIMIT %d", filt.Count)
+	}
 
-		store.DebugLog.Printf("fetch: %s\n", q)
-		store.DebugLog.Printf("fetch params: %+v\n", params)
-		artRows, err := store.db.Query(q, params...)
-		if err != nil {
-			c <- FetchedArt{nil, err}
-			return
-		}
-		defer artRows.Close()
-		for artRows.Next() {
-			select {
-			case <-abort:
-				store.DebugLog.Printf("fetch aborted.\n")
-				return
-			default:
-			}
+	ss.DebugLog.Printf("fetch: %s\n", q)
+	ss.DebugLog.Printf("fetch params: %+v\n", params)
 
-			var art Article
-			var p = &art.Publication
+	rows, err := ss.db.Query(q, params...)
+	if err != nil {
+		return nil, err
+	}
 
-			var published, updated pq.NullTime
-			var extra []byte
-			if err := artRows.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &extra, &p.Code, &p.Name, &p.Domain); err != nil {
-				c <- FetchedArt{nil, err}
-				return
-			}
-
-			if published.Valid {
-				art.Published = published.Time.Format(time.RFC3339)
-			}
-			if updated.Valid {
-				art.Updated = updated.Time.Format(time.RFC3339)
-			}
-
-			urls, err := store.fetchURLs(art.ID)
-			if err != nil {
-				c <- FetchedArt{nil, err}
-				return
-			}
-			art.URLs = urls
-
-			keywords, err := store.fetchKeywords(art.ID)
-			if err != nil {
-				c <- FetchedArt{nil, err}
-				return
-			}
-			art.Keywords = keywords
-
-			authors, err := store.fetchAuthors(art.ID)
-			if err != nil {
-				c <- FetchedArt{nil, err}
-				return
-			}
-			art.Authors = authors
-
-			// decode extra data
-			if len(extra) > 0 {
-				err = json.Unmarshal(extra, &art.Extra)
-				if err != nil {
-					err = fmt.Errorf("error in 'Extra' (artid %d): %s", art.ID, err)
-					c <- FetchedArt{nil, err}
-					return
-				}
-			}
-
-			// TODO: keywords
-
-			//			fmt.Printf("send %d: %s\n", art.ID, art.Headline)
-			c <- FetchedArt{&art, nil}
-
-		}
-		if err := artRows.Err(); err != nil {
-			c <- FetchedArt{nil, err}
-			return
-		}
-
-	}()
-	return c, abort
+	return &SQLArtIter{ss: ss, rows: rows}, nil
 }
 
-func (store *SQLStore) fetchURLs(artID int) ([]string, error) {
-	rows, err := store.db.Query(`SELECT url FROM article_url WHERE article_id=$1`, artID)
+func (it *SQLArtIter) Close() error {
+	return it.rows.Close()
+}
+
+func (it *SQLArtIter) Err() error {
+	return it.err
+}
+
+func (it *SQLArtIter) NextArticle() *store.Article {
+	if !it.rows.Next() {
+		it.err = it.rows.Err()
+		return nil // all done
+	}
+	var art store.Article
+	var p = &art.Publication
+
+	var published, updated pq.NullTime
+	var extra []byte
+	err := it.rows.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &extra, &p.Code, &p.Name, &p.Domain)
+	if err != nil {
+		it.err = err
+		return nil
+	}
+
+	if published.Valid {
+		art.Published = published.Time.Format(time.RFC3339)
+	}
+	if updated.Valid {
+		art.Updated = updated.Time.Format(time.RFC3339)
+	}
+
+	urls, err := it.ss.fetchURLs(art.ID)
+	if err != nil {
+		it.err = err
+		return nil
+	}
+	art.URLs = urls
+
+	keywords, err := it.ss.fetchKeywords(art.ID)
+	if err != nil {
+		it.err = err
+		return nil
+	}
+	art.Keywords = keywords
+
+	authors, err := it.ss.fetchAuthors(art.ID)
+	if err != nil {
+		it.err = err
+		return nil
+	}
+	art.Authors = authors
+
+	// decode extra data
+	if len(extra) > 0 {
+		err = json.Unmarshal(extra, &art.Extra)
+		if err != nil {
+			it.err = err
+			return nil
+		}
+	}
+	return &art
+}
+
+func (ss *SQLStore) fetchURLs(artID int) ([]string, error) {
+	rows, err := ss.db.Query(`SELECT url FROM article_url WHERE article_id=$1`, artID)
 	if err != nil {
 		return nil, err
 	}
@@ -346,18 +349,18 @@ func (store *SQLStore) fetchURLs(artID int) ([]string, error) {
 	return out, nil
 }
 
-func (store *SQLStore) fetchAuthors(artID int) ([]Author, error) {
+func (ss *SQLStore) fetchAuthors(artID int) ([]store.Author, error) {
 	q := `SELECT name,rel_link,email,twitter
         FROM (author a INNER JOIN author_attr attr ON attr.author_id=a.id)
         WHERE article_id=$1`
-	rows, err := store.db.Query(q, artID)
+	rows, err := ss.db.Query(q, artID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []Author{}
+	out := []store.Author{}
 	for rows.Next() {
-		var a Author
+		var a store.Author
 		if err := rows.Scan(&a.Name, &a.RelLink, &a.Email, &a.Twitter); err != nil {
 			return nil, err
 		}
@@ -369,18 +372,18 @@ func (store *SQLStore) fetchAuthors(artID int) ([]Author, error) {
 	return out, nil
 }
 
-func (store *SQLStore) fetchKeywords(artID int) ([]Keyword, error) {
+func (ss *SQLStore) fetchKeywords(artID int) ([]store.Keyword, error) {
 	q := `SELECT name,url
         FROM article_keyword
         WHERE article_id=$1`
-	rows, err := store.db.Query(q, artID)
+	rows, err := ss.db.Query(q, artID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []Keyword{}
+	out := []store.Keyword{}
 	for rows.Next() {
-		var k Keyword
+		var k store.Keyword
 		if err := rows.Scan(&k.Name, &k.URL); err != nil {
 			return nil, err
 		}
@@ -392,16 +395,16 @@ func (store *SQLStore) fetchKeywords(artID int) ([]Keyword, error) {
 	return out, nil
 }
 
-func (store *SQLStore) FetchPublications() ([]Publication, error) {
-	rows, err := store.db.Query(`SELECT code,name,domain FROM publication ORDER by code`)
+func (ss *SQLStore) FetchPublications() ([]store.Publication, error) {
+	rows, err := ss.db.Query(`SELECT code,name,domain FROM publication ORDER by code`)
 
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []Publication{}
+	out := []store.Publication{}
 	for rows.Next() {
-		var p Publication
+		var p store.Publication
 		if err := rows.Scan(&p.Code, &p.Name, &p.Domain); err != nil {
 			return nil, err
 		}
@@ -414,13 +417,7 @@ func (store *SQLStore) FetchPublications() ([]Publication, error) {
 
 }
 
-type DatePubCount struct {
-	Date    pq.NullTime
-	PubCode string
-	Count   int
-}
-
-func (store *SQLStore) FetchSummary(filt *Filter, group string) ([]DatePubCount, error) {
+func (ss *SQLStore) FetchSummary(filt *store.Filter, group string) ([]store.DatePubCount, error) {
 	whereClause, params := buildWhere(filt).Render(1, " AND ")
 	if whereClause != "" {
 		whereClause = "WHERE " + whereClause
@@ -440,17 +437,17 @@ func (store *SQLStore) FetchSummary(filt *Filter, group string) ([]DatePubCount,
 	    FROM (article a INNER JOIN publication p ON a.publication_id=p.id) ` +
 		whereClause + ` GROUP BY day, p.code ORDER BY day ASC ,p.code ASC;`
 
-	store.DebugLog.Printf("summary: %s\n", q)
-	store.DebugLog.Printf("summary params: %+v\n", params)
+	ss.DebugLog.Printf("summary: %s\n", q)
+	ss.DebugLog.Printf("summary params: %+v\n", params)
 
-	rows, err := store.db.Query(q, params...)
+	rows, err := ss.db.Query(q, params...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []DatePubCount{}
+	out := []store.DatePubCount{}
 	for rows.Next() {
-		foo := DatePubCount{}
+		foo := store.DatePubCount{}
 		if err := rows.Scan(&foo.Date, &foo.PubCode, &foo.Count); err != nil {
 			return nil, err
 		}
@@ -460,23 +457,23 @@ func (store *SQLStore) FetchSummary(filt *Filter, group string) ([]DatePubCount,
 		return nil, err
 	}
 
-	store.DebugLog.Printf("summary out: %d\n", len(out))
+	ss.DebugLog.Printf("summary out: %d\n", len(out))
 	return out, nil
 
 }
 
 // Fetch a single article by ID
-func (store *SQLStore) FetchArt(artID int) (*Article, error) {
+func (ss *SQLStore) FetchArt(artID int) (*store.Article, error) {
 
 	q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
 	               WHERE a.id=$1`
 
-	store.DebugLog.Printf("fetch: %s [%d]\n", q, artID)
-	row := store.db.QueryRow(q, artID)
+	ss.DebugLog.Printf("fetch: %s [%d]\n", q, artID)
+	row := ss.db.QueryRow(q, artID)
 
 	/* TODO: split scanning/augmenting out into function, to share with Fetch() */
-	var art Article
+	var art store.Article
 	var p = &art.Publication
 
 	var published, updated pq.NullTime
@@ -492,19 +489,19 @@ func (store *SQLStore) FetchArt(artID int) (*Article, error) {
 		art.Updated = updated.Time.Format(time.RFC3339)
 	}
 
-	urls, err := store.fetchURLs(art.ID)
+	urls, err := ss.fetchURLs(art.ID)
 	if err != nil {
 		return nil, err
 	}
 	art.URLs = urls
 
-	keywords, err := store.fetchKeywords(art.ID)
+	keywords, err := ss.fetchKeywords(art.ID)
 	if err != nil {
 		return nil, err
 	}
 	art.Keywords = keywords
 
-	authors, err := store.fetchAuthors(art.ID)
+	authors, err := ss.fetchAuthors(art.ID)
 	if err != nil {
 		return nil, err
 	}

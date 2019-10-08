@@ -1,4 +1,4 @@
-package store
+package sqlstore
 
 // attempt to make it easier to construct parameterised SQL statements...
 import (

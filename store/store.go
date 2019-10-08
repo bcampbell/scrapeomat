@@ -1,17 +1,22 @@
 package store
 
-// TODO: KILLKILLKILL!
-type FetchedArt struct {
-	Art *Article
-	Err error
-}
+import (
+	"time"
+)
 
 type Logger interface {
 	Printf(format string, v ...interface{})
 }
-type nullLogger struct{}
+type ArtIter interface {
+	NextArticle() *Article
+	Err() error
+	Close() error
+}
 
-func (l nullLogger) Printf(format string, v ...interface{}) {
+type DatePubCount struct {
+	Date    time.Time
+	PubCode string
+	Count   int
 }
 
 type Store interface {
@@ -21,7 +26,7 @@ type Store interface {
 	FindURLs(urls []string) ([]int, error)
 	FetchCount(filt *Filter) (int, error)
 	// TODO: fetch should return a cursor/iterator
-	Fetch(filt *Filter) (<-chan FetchedArt, chan<- struct{})
+	Fetch(filt *Filter) (ArtIter, error)
 	FetchPublications() ([]Publication, error)
 	FetchSummary(filt *Filter, group string) ([]DatePubCount, error)
 	FetchArt(artID int) (*Article, error)

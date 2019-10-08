@@ -11,7 +11,10 @@ import (
 	"fmt"
 	"gopkg.in/gcfg.v1"
 	//	"net"
-	"github.com/bcampbell/scrapeomat/store"
+	//"database/sql"
+	//"github.com/bcampbell/scrapeomat/store"
+	"github.com/bcampbell/scrapeomat/store/sqlstore"
+	_ "github.com/lib/pq"
 	"os"
 	"os/signal"
 	"path"
@@ -133,7 +136,7 @@ options:
 		os.Exit(1)
 	}
 
-	db, err := store.NewSQLStore(connStr)
+	db, err := sqlstore.NewSQLStore("postgres", connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)
