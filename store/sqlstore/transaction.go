@@ -76,7 +76,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 
 	if artID == 0 {
 		// it's a new article
-		err = tx.QueryRow(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section,extra) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		result, err := tx.Exec(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section,extra) VALUES(?,?,?,?,?,?,?,?)`,
 			art.CanonicalURL,
 			art.Headline,
 			art.Content,
@@ -84,15 +84,22 @@ func (t *Transaction) Stash(art *store.Article) int {
 			t.s.cvtTime(art.Updated),
 			pubID,
 			art.Section,
-			extra).Scan(&artID)
+			extra)
 		if err != nil {
 			t.err = err
 			return 0
 		}
+		// TODO: not supported under PG? (use "RETURNING" syntax)
+		tmpID, err := result.LastInsertId()
+		if err != nil {
+			t.err = err
+			return 0
+		}
+		artID = int(tmpID)
 	} else {
 		// updating an existing article
 
-		_, err = tx.Exec(`UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,extra,added) = ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) WHERE id=$9`,
+		_, err = tx.Exec(`UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,extra,added) = (?,?,?,?,?,?,?,?,NOW()) WHERE id=?`,
 			art.CanonicalURL,
 			art.Headline,
 			art.Content,
@@ -108,26 +115,26 @@ func (t *Transaction) Stash(art *store.Article) int {
 		}
 
 		// delete old urls
-		_, err = tx.Exec(`DELETE FROM article_url WHERE article_id=$1`, artID)
+		_, err = tx.Exec(`DELETE FROM article_url WHERE article_id=?`, artID)
 		if err != nil {
 			t.err = err
 			return 0
 		}
 
 		// delete old keywords
-		_, err = tx.Exec(`DELETE FROM article_keyword WHERE article_id=$1`, artID)
+		_, err = tx.Exec(`DELETE FROM article_keyword WHERE article_id=?`, artID)
 		if err != nil {
 			t.err = err
 			return 0
 		}
 
 		// delete old authors
-		_, err = tx.Exec(`DELETE FROM author WHERE id IN (SELECT author_id FROM author_attr WHERE article_id=$1)`, artID)
+		_, err = tx.Exec(`DELETE FROM author WHERE id IN (SELECT author_id FROM author_attr WHERE article_id=?)`, artID)
 		if err != nil {
 			t.err = err
 			return 0
 		}
-		_, err = tx.Exec(`DELETE FROM author_attr WHERE article_id=$1`, artID)
+		_, err = tx.Exec(`DELETE FROM author_attr WHERE article_id=?`, artID)
 		if err != nil {
 			t.err = err
 			return 0
@@ -135,7 +142,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 	}
 
 	for _, u := range art.URLs {
-		_, err = tx.Exec(`INSERT INTO article_url(article_id,url) VALUES($1,$2)`, artID, u)
+		_, err = tx.Exec(`INSERT INTO article_url(article_id,url) VALUES(?,?)`, artID, u)
 		if err != nil {
 			t.err = fmt.Errorf("failed adding url %s: %s", u, err)
 			return 0
@@ -143,7 +150,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 	}
 
 	for _, k := range art.Keywords {
-		_, err = tx.Exec(`INSERT INTO article_keyword(article_id,name,url) VALUES($1,$2,$3)`,
+		_, err = tx.Exec(`INSERT INTO article_keyword(article_id,name,url) VALUES(?,?,?)`,
 			artID,
 			k.Name,
 			k.URL)
@@ -155,16 +162,23 @@ func (t *Transaction) Stash(art *store.Article) int {
 
 	for _, author := range art.Authors {
 		var authorID int
-		err = tx.QueryRow(`INSERT INTO author(name,rel_link,email,twitter) VALUES ($1,$2,$3,$4) RETURNING id`,
+		result, err := tx.Exec(`INSERT INTO author(name,rel_link,email,twitter) VALUES (?,?,?,?)`,
 			author.Name,
 			author.RelLink,
 			author.Email,
-			author.Twitter).Scan(&authorID)
+			author.Twitter)
 		if err != nil {
 			t.err = err
 			return 0
 		}
-		_, err = tx.Exec(`INSERT INTO author_attr(author_id,article_id) VALUES ($1, $2)`,
+		tmpID, err := result.LastInsertId()
+		if err != nil {
+			t.err = err
+			return 0
+		}
+		authorID = int(tmpID)
+
+		_, err = tx.Exec(`INSERT INTO author_attr(author_id,article_id) VALUES (?,,?)`,
 			authorID,
 			artID)
 		if err != nil {
@@ -195,7 +209,7 @@ func (t *Transaction) findPublication(pub *store.Publication) (int, error) {
 
 	if pub.Code != "" {
 
-		err = t.tx.QueryRow(`SELECT id FROM publication WHERE code=$1`, pub.Code).Scan(&pubID)
+		err = t.tx.QueryRow(`SELECT id FROM publication WHERE code=?`, pub.Code).Scan(&pubID)
 		if err == nil {
 			return pubID, nil // return existing publication
 		}
@@ -206,7 +220,7 @@ func (t *Transaction) findPublication(pub *store.Publication) (int, error) {
 
 	if pub.Name != "" {
 
-		err = t.tx.QueryRow(`SELECT id FROM publication WHERE name=$1`, pub.Name).Scan(&pubID)
+		err = t.tx.QueryRow(`SELECT id FROM publication WHERE name=?`, pub.Name).Scan(&pubID)
 		if err == nil {
 			return pubID, nil // return existing publication
 		}
@@ -217,7 +231,7 @@ func (t *Transaction) findPublication(pub *store.Publication) (int, error) {
 
 	// TODO: publications can have multiple domains...
 	if pub.Domain != "" {
-		err = t.tx.QueryRow(`SELECT id FROM publication WHERE domain=$1`, pub.Domain).Scan(&pubID)
+		err = t.tx.QueryRow(`SELECT id FROM publication WHERE domain=?`, pub.Domain).Scan(&pubID)
 		if err == nil {
 			return pubID, nil // return existing publication
 		}
@@ -231,13 +245,16 @@ func (t *Transaction) findPublication(pub *store.Publication) (int, error) {
 
 func (t *Transaction) createPublication(pub *store.Publication) (int, error) {
 	// create new
-	var pubID int
-	err := t.tx.QueryRow(`INSERT INTO publication(code,name,domain) VALUES($1,$2,$3) RETURNING id`,
+	result, err := t.tx.Exec(`INSERT INTO publication(code,name,domain) VALUES(?,?,?)`,
 		pub.Code,
 		pub.Name,
-		pub.Domain).Scan(&pubID)
+		pub.Domain)
 	if err != nil {
 		return 0, err
 	}
-	return pubID, nil
+	pubID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return int(pubID), nil
 }

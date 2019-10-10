@@ -2,12 +2,13 @@ package sqlstore
 
 import (
 	"fmt"
+	"github.com/bcampbell/scrapeomat/store"
 	"time"
 )
 
 func ExampleBuildWhere() {
 
-	filt := &Filter{
+	filt := &store.Filter{
 		PubFrom:  time.Date(2010, 1, 1, 0, 0, 0, 0, time.UTC),
 		PubTo:    time.Date(2010, 2, 1, 0, 0, 0, 0, time.UTC),
 		PubCodes: []string{"dailynews", "dailyshoes"},

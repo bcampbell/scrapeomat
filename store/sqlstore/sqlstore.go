@@ -46,6 +46,12 @@ func NewSQLStore(driver string, connStr string) (*SQLStore, error) {
 		return nil, err
 	}
 
+	err = checkSchema(db)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	// our assumed location for publication dates, when no timezone given
 	// TODO: this is the wrong place for it. Scraper should handle this on a per-publication basis
 	loc, err := time.LoadLocation("Europe/London")
@@ -137,7 +143,7 @@ func (ss *SQLStore) FindURLs(urls []string) ([]int, error) {
 	placeholders := make([]string, len(urls))
 	for i, u := range urls {
 		params[i] = u
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		placeholders[i] = "?"
 	}
 
 	s := `SELECT distinct article_id FROM article_url WHERE url IN (` + strings.Join(placeholders, ",") + `)`
@@ -166,7 +172,7 @@ func (ss *SQLStore) FindURLs(urls []string) ([]int, error) {
 // canonical urls in here you should be ok :-)
 func (ss *SQLStore) WhichAreNew(artURLs []string) ([]string, error) {
 
-	stmt, err := ss.db.Prepare(`SELECT article_id FROM article_url WHERE url=$1`)
+	stmt, err := ss.db.Prepare(`SELECT article_id FROM article_url WHERE url=?`)
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +336,7 @@ func (it *SQLArtIter) NextArticle() *store.Article {
 }
 
 func (ss *SQLStore) fetchURLs(artID int) ([]string, error) {
-	rows, err := ss.db.Query(`SELECT url FROM article_url WHERE article_id=$1`, artID)
+	rows, err := ss.db.Query(`SELECT url FROM article_url WHERE article_id=?`, artID)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +358,7 @@ func (ss *SQLStore) fetchURLs(artID int) ([]string, error) {
 func (ss *SQLStore) fetchAuthors(artID int) ([]store.Author, error) {
 	q := `SELECT name,rel_link,email,twitter
         FROM (author a INNER JOIN author_attr attr ON attr.author_id=a.id)
-        WHERE article_id=$1`
+        WHERE article_id=?`
 	rows, err := ss.db.Query(q, artID)
 	if err != nil {
 		return nil, err
@@ -375,7 +381,7 @@ func (ss *SQLStore) fetchAuthors(artID int) ([]store.Author, error) {
 func (ss *SQLStore) fetchKeywords(artID int) ([]store.Keyword, error) {
 	q := `SELECT name,url
         FROM article_keyword
-        WHERE article_id=$1`
+        WHERE article_id=?`
 	rows, err := ss.db.Query(q, artID)
 	if err != nil {
 		return nil, err
@@ -467,7 +473,7 @@ func (ss *SQLStore) FetchArt(artID int) (*store.Article, error) {
 
 	q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
-	               WHERE a.id=$1`
+	               WHERE a.id=?`
 
 	ss.DebugLog.Printf("fetch: %s [%d]\n", q, artID)
 	row := ss.db.QueryRow(q, artID)
