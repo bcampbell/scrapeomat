@@ -7,14 +7,9 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"flag"
 	"fmt"
-	"gopkg.in/gcfg.v1"
-	//	"net"
-	//"database/sql"
-	//"github.com/bcampbell/scrapeomat/store"
-	"github.com/bcampbell/scrapeomat/store/sqlstore"
-	_ "github.com/lib/pq"
 	"os"
 	"os/signal"
 	"path"
@@ -23,6 +18,11 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/bcampbell/scrapeomat/store/sqlstore"
+	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
+	"gopkg.in/gcfg.v1"
 )
 
 var opts struct {
@@ -33,7 +33,8 @@ var opts struct {
 	updateMode        bool
 	discover          bool
 	list              bool
-	db                string
+	driver            string // database driver
+	db                string // db connection string
 }
 
 func main() {
@@ -48,10 +49,11 @@ By default, runs in continuous mode, checking for new articles at regular interv
 
 environment vars:
 
-   SCRAPEOMAT_DB - postgres db connection string (same as -db option)
+   SCRAPEOMAT_DRIVER - one of: %s (default driver is sqlite3)
+   SCRAPEOMAT_DB - db connection string (same as -db option)
 
 options:
-`)
+`, strings.Join(sql.Drivers(), ","))
 		flag.PrintDefaults()
 	}
 	flag.IntVar(&opts.verbosity, "v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
@@ -61,6 +63,7 @@ options:
 	flag.BoolVar(&opts.discover, "discover", false, "run discovery for target sites, output article links to stdout, then exit")
 	flag.StringVar(&opts.inputFile, "i", "", "input file of URLs (runs scrapers then exit)")
 	flag.BoolVar(&opts.updateMode, "update", false, "Update articles already in db (when using -i)")
+	flag.StringVar(&opts.driver, "driver", "sqlite3", "database driver")
 	flag.StringVar(&opts.db, "db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
 	flag.Parse()
 
@@ -130,13 +133,17 @@ options:
 	if connStr == "" {
 		connStr = os.Getenv("SCRAPEOMAT_DB")
 	}
+	driver := opts.driver
+	if driver == "" {
+		driver = os.Getenv("SCRAPEOMAT_DRIVER")
+	}
 
 	if connStr == "" {
 		fmt.Fprintf(os.Stderr, "ERROR: no database specified (use -db flag or set $SCRAPEOMAT_DB)\n")
 		os.Exit(1)
 	}
 
-	db, err := sqlstore.NewSQLStore("postgres", connStr)
+	db, err := sqlstore.New(driver, connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)
