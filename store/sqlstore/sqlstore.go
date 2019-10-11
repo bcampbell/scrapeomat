@@ -18,10 +18,11 @@ func (l nullLogger) Printf(format string, v ...interface{}) {
 
 // SQLStore stashes articles in an SQL database
 type SQLStore struct {
-	db       *sql.DB
-	loc      *time.Location
-	ErrLog   store.Logger
-	DebugLog store.Logger
+	db         *sql.DB
+	driverName string
+	loc        *time.Location
+	ErrLog     store.Logger
+	DebugLog   store.Logger
 }
 
 type SQLArtIter struct {
@@ -46,12 +47,6 @@ func NewSQLStore(driver string, connStr string) (*SQLStore, error) {
 		return nil, err
 	}
 
-	err = checkSchema(db)
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
-
 	// our assumed location for publication dates, when no timezone given
 	// TODO: this is the wrong place for it. Scraper should handle this on a per-publication basis
 	loc, err := time.LoadLocation("Europe/London")
@@ -60,10 +55,17 @@ func NewSQLStore(driver string, connStr string) (*SQLStore, error) {
 	}
 
 	ss := SQLStore{
-		db:       db,
-		loc:      loc,
-		ErrLog:   nullLogger{}, // TODO: should log to stderr by default?
-		DebugLog: nullLogger{},
+		db:         db,
+		driverName: driver,
+		loc:        loc,
+		ErrLog:     nullLogger{}, // TODO: should log to stderr by default?
+		DebugLog:   nullLogger{},
+	}
+
+	err = ss.checkSchema()
+	if err != nil {
+		db.Close()
+		return nil, err
 	}
 
 	return &ss, nil
@@ -74,6 +76,10 @@ func (ss *SQLStore) Close() {
 		ss.db.Close()
 		ss.db = nil
 	}
+}
+
+func (ss *SQLStore) rebind(q string) string {
+	return rebind(bindType(ss.driverName), q)
 }
 
 func (ss *SQLStore) Begin() *Transaction {
@@ -109,28 +115,6 @@ func (ss *SQLStore) cvtTime(timestamp string) pq.NullTime {
 
 var datePat = regexp.MustCompile(`^\d\d\d\d-\d\d-\d\d`)
 
-// returns 0,nil if not found
-/*
-TODO: handle multiple matches...
-func (ss *SQLStore) FindArticle(artURLs []string) (int, error) {
-
-	frags := make(fragList, 0, len(artURLs))
-	for _, u := range artURLs {
-		frags.Add("?", u)
-	}
-	foo, params := frags.Render(1, ",")
-	var artID int
-	s := `SELECT DISTINCT article_id FROM article_url WHERE url IN (` + foo + `)`
-	err := ss.db.QueryRow(s, params...).Scan(&artID)
-	if err == sql.ErrNoRows {
-		return 0, nil
-	} else if err != nil {
-		return 0, err
-	}
-	return artID, nil
-}
-*/
-
 // FindURLs Looks up article urls, returning a list of matching article IDs.
 // usually you'd use this on the URLs for a single article, expecting zero or one IDs back,
 // but there's no reason you can't look up a whole bunch of articles at once, although you won't
@@ -147,7 +131,7 @@ func (ss *SQLStore) FindURLs(urls []string) ([]int, error) {
 	}
 
 	s := `SELECT distinct article_id FROM article_url WHERE url IN (` + strings.Join(placeholders, ",") + `)`
-	rows, err := ss.db.Query(s, params...)
+	rows, err := ss.db.Query(ss.rebind(s), params...)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +156,7 @@ func (ss *SQLStore) FindURLs(urls []string) ([]int, error) {
 // canonical urls in here you should be ok :-)
 func (ss *SQLStore) WhichAreNew(artURLs []string) ([]string, error) {
 
-	stmt, err := ss.db.Prepare(`SELECT article_id FROM article_url WHERE url=?`)
+	stmt, err := ss.db.Prepare(ss.rebind(`SELECT article_id FROM article_url WHERE url=?`))
 	if err != nil {
 		return nil, err
 	}
@@ -190,24 +174,30 @@ func (ss *SQLStore) WhichAreNew(artURLs []string) ([]string, error) {
 	return newArts, nil
 }
 
-func buildWhere(filt *store.Filter) *fragList {
-	//var idx int = 1
-	frags := &fragList{}
+// Build a WHERE clause from a filter.
+func buildWhere(filt *store.Filter) (string, []interface{}) {
+	params := []interface{}{}
+	frags := []string{}
 
 	if !filt.PubFrom.IsZero() {
-		frags.Add("a.published>=?", filt.PubFrom)
+		frags = append(frags, "a.published>=?")
+		params = append(params, filt.PubFrom)
 	}
 	if !filt.PubTo.IsZero() {
-		frags.Add("a.published<?", filt.PubTo)
+		frags = append(frags, "a.published<?")
+		params = append(params, filt.PubTo)
 	}
 	if !filt.AddedFrom.IsZero() {
-		frags.Add("a.added>=?", filt.AddedFrom)
+		frags = append(frags, "a.added>=?")
+		params = append(params, filt.AddedFrom)
 	}
 	if !filt.AddedTo.IsZero() {
-		frags.Add("a.added<?", filt.AddedTo)
+		frags = append(frags, "a.added<?")
+		params = append(params, filt.AddedTo)
 	}
 	if filt.SinceID > 0 {
-		frags.Add("a.id>?", filt.SinceID)
+		frags = append(frags, "a.id>?")
+		params = append(params, filt.SinceID)
 	}
 
 	if len(filt.PubCodes) > 0 {
@@ -217,7 +207,8 @@ func buildWhere(filt *store.Filter) *fragList {
 			foo = append(foo, "?")
 			bar = append(bar, code)
 		}
-		frags.Add("p.code IN ("+strings.Join(foo, ",")+")", bar...)
+		frags = append(frags, "p.code IN ("+strings.Join(foo, ",")+")")
+		params = append(params, bar...)
 	}
 
 	if len(filt.XPubCodes) > 0 {
@@ -227,17 +218,19 @@ func buildWhere(filt *store.Filter) *fragList {
 			foo = append(foo, "?")
 			bar = append(bar, code)
 		}
-		frags.Add("p.code NOT IN ("+strings.Join(foo, ",")+")", bar...)
+		frags = append(frags, "p.code NOT IN ("+strings.Join(foo, ",")+")")
+		params = append(params, bar...)
 	}
 
-	return frags
+	var whereClause string
+	if len(frags) > 0 {
+		whereClause = "WHERE " + strings.Join(frags, " AND ")
+	}
+	return whereClause, params
 }
 
 func (ss *SQLStore) FetchCount(filt *store.Filter) (int, error) {
-	whereClause, params := buildWhere(filt).Render(1, " AND ")
-	if whereClause != "" {
-		whereClause = "WHERE " + whereClause
-	}
+	whereClause, params := buildWhere(filt)
 	q := `SELECT COUNT(*)
            FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
            ` + whereClause
@@ -248,10 +241,7 @@ func (ss *SQLStore) FetchCount(filt *store.Filter) (int, error) {
 
 func (ss *SQLStore) Fetch(filt *store.Filter) (store.ArtIter, error) {
 
-	whereClause, params := buildWhere(filt).Render(1, " AND ")
-	if whereClause != "" {
-		whereClause = "WHERE " + whereClause
-	}
+	whereClause, params := buildWhere(filt)
 
 	q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
@@ -264,7 +254,7 @@ func (ss *SQLStore) Fetch(filt *store.Filter) (store.ArtIter, error) {
 	ss.DebugLog.Printf("fetch: %s\n", q)
 	ss.DebugLog.Printf("fetch params: %+v\n", params)
 
-	rows, err := ss.db.Query(q, params...)
+	rows, err := ss.db.Query(ss.rebind(q), params...)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +326,8 @@ func (it *SQLArtIter) NextArticle() *store.Article {
 }
 
 func (ss *SQLStore) fetchURLs(artID int) ([]string, error) {
-	rows, err := ss.db.Query(`SELECT url FROM article_url WHERE article_id=?`, artID)
+	q := `SELECT url FROM article_url WHERE article_id=?`
+	rows, err := ss.db.Query(ss.rebind(q), artID)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +350,7 @@ func (ss *SQLStore) fetchAuthors(artID int) ([]store.Author, error) {
 	q := `SELECT name,rel_link,email,twitter
         FROM (author a INNER JOIN author_attr attr ON attr.author_id=a.id)
         WHERE article_id=?`
-	rows, err := ss.db.Query(q, artID)
+	rows, err := ss.db.Query(ss.rebind(q), artID)
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +373,7 @@ func (ss *SQLStore) fetchKeywords(artID int) ([]store.Keyword, error) {
 	q := `SELECT name,url
         FROM article_keyword
         WHERE article_id=?`
-	rows, err := ss.db.Query(q, artID)
+	rows, err := ss.db.Query(ss.rebind(q), artID)
 	if err != nil {
 		return nil, err
 	}
@@ -402,7 +393,8 @@ func (ss *SQLStore) fetchKeywords(artID int) ([]store.Keyword, error) {
 }
 
 func (ss *SQLStore) FetchPublications() ([]store.Publication, error) {
-	rows, err := ss.db.Query(`SELECT code,name,domain FROM publication ORDER by code`)
+	q := `SELECT code,name,domain FROM publication ORDER by code`
+	rows, err := ss.db.Query(ss.rebind(q))
 
 	if err != nil {
 		return nil, err
@@ -424,10 +416,7 @@ func (ss *SQLStore) FetchPublications() ([]store.Publication, error) {
 }
 
 func (ss *SQLStore) FetchSummary(filt *store.Filter, group string) ([]store.DatePubCount, error) {
-	whereClause, params := buildWhere(filt).Render(1, " AND ")
-	if whereClause != "" {
-		whereClause = "WHERE " + whereClause
-	}
+	whereClause, params := buildWhere(filt)
 
 	var dayField string
 	switch group {
@@ -446,7 +435,7 @@ func (ss *SQLStore) FetchSummary(filt *store.Filter, group string) ([]store.Date
 	ss.DebugLog.Printf("summary: %s\n", q)
 	ss.DebugLog.Printf("summary params: %+v\n", params)
 
-	rows, err := ss.db.Query(q, params...)
+	rows, err := ss.db.Query(ss.rebind(q), params...)
 	if err != nil {
 		return nil, err
 	}

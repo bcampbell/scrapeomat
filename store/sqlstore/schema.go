@@ -1,24 +1,30 @@
 package sqlstore
 
 import (
-	"database/sql"
+	//	"database/sql"
 	"fmt"
 )
 
-func checkSchema(db *sql.DB) error {
+func (ss *SQLStore) checkSchema() error {
 
-	ver, err := schemaVersion(db)
+	ver, err := ss.schemaVersion()
 	if err != nil {
 		return err
 	}
 	if ver == 7 {
 		return nil // up to date.
 	}
-	if ver != 0 {
-		return fmt.Errorf("No upgrade path (from ver %d)", ver)
+
+	// auto schema management currently only for sqlite.
+	if ss.driverName != "sqlite3" {
+		return fmt.Errorf("Missing Schema.")
 	}
 
-	// TODO: handle schema upgrades
+	if ver != 0 {
+		return fmt.Errorf("No Schema upgrade path (from ver %d)", ver)
+	}
+
+	// TODO: handle schema upgrades for data-in-the-wild!
 
 	stmts := []string{
 		`CREATE TABLE publication (
@@ -86,7 +92,7 @@ func checkSchema(db *sql.DB) error {
 	}
 
 	for _, stmt := range stmts {
-		_, err := db.Exec(stmt)
+		_, err := ss.db.Exec(stmt)
 		if err != nil {
 			return err
 		}
@@ -96,25 +102,13 @@ func checkSchema(db *sql.DB) error {
 	return nil
 }
 
-func schemaVersion(db *sql.DB) (int, error) {
-	var n string
-	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='article';`).Scan(&n)
-	if err == sql.ErrNoRows {
-		return 0, nil // no schema at all
-	}
-	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='version';`).Scan(&n)
-	if err == sql.ErrNoRows {
-		return 1, nil // version 1: no version table :-)
-	}
-	if err != nil {
-		return 0, err
-	}
-
+func (ss *SQLStore) schemaVersion() (int, error) {
 	var v int
-	err = db.QueryRow(`SELECT MAX(ver) FROM version`).Scan(&v)
+	err := ss.db.QueryRow(`SELECT MAX(ver) FROM version`).Scan(&v)
 	if err != nil {
-		return 0, err
+		// should distinguish between missing version table and other errors,
+		// but hey.
+		return 0, nil
 	}
-
 	return v, nil
 }

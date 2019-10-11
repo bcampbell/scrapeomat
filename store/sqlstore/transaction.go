@@ -8,7 +8,7 @@ import (
 )
 
 type Transaction struct {
-	s   *SQLStore
+	ss  *SQLStore
 	tx  *sql.Tx
 	err error
 }
@@ -25,9 +25,9 @@ func newTransaction(store *SQLStore) *Transaction {
 	if err != nil {
 		// transaction is borked, but user can keep calling it, and
 		// the error will be returned upon Close()
-		return &Transaction{s: store, tx: nil, err: err}
+		return &Transaction{ss: store, tx: nil, err: err}
 	} else {
-		return &Transaction{s: store, tx: tx, err: err}
+		return &Transaction{ss: store, tx: tx, err: err}
 	}
 }
 
@@ -57,6 +57,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 		return 0
 	}
 	tx := t.tx
+	ss := t.ss
 	pubID, err := t.findOrCreatePublication(&art.Publication)
 	if err != nil {
 		t.err = err
@@ -76,12 +77,13 @@ func (t *Transaction) Stash(art *store.Article) int {
 
 	if artID == 0 {
 		// it's a new article
-		result, err := tx.Exec(`INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section,extra) VALUES(?,?,?,?,?,?,?,?)`,
+		q := `INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section,extra) VALUES(?,?,?,?,?,?,?,?)`
+		result, err := tx.Exec(ss.rebind(q),
 			art.CanonicalURL,
 			art.Headline,
 			art.Content,
-			t.s.cvtTime(art.Published),
-			t.s.cvtTime(art.Updated),
+			ss.cvtTime(art.Published),
+			ss.cvtTime(art.Updated),
 			pubID,
 			art.Section,
 			extra)
@@ -99,12 +101,13 @@ func (t *Transaction) Stash(art *store.Article) int {
 	} else {
 		// updating an existing article
 
-		_, err = tx.Exec(`UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,extra,added) = (?,?,?,?,?,?,?,?,NOW()) WHERE id=?`,
+		q := `UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,extra,added) = (?,?,?,?,?,?,?,?,NOW()) WHERE id=?`
+		_, err = tx.Exec(ss.rebind(q),
 			art.CanonicalURL,
 			art.Headline,
 			art.Content,
-			t.s.cvtTime(art.Published),
-			t.s.cvtTime(art.Updated),
+			ss.cvtTime(art.Published),
+			ss.cvtTime(art.Updated),
 			pubID,
 			art.Section,
 			extra,
@@ -115,26 +118,26 @@ func (t *Transaction) Stash(art *store.Article) int {
 		}
 
 		// delete old urls
-		_, err = tx.Exec(`DELETE FROM article_url WHERE article_id=?`, artID)
+		_, err = tx.Exec(ss.rebind(`DELETE FROM article_url WHERE article_id=?`), artID)
 		if err != nil {
 			t.err = err
 			return 0
 		}
 
 		// delete old keywords
-		_, err = tx.Exec(`DELETE FROM article_keyword WHERE article_id=?`, artID)
+		_, err = tx.Exec(ss.rebind(`DELETE FROM article_keyword WHERE article_id=?`), artID)
 		if err != nil {
 			t.err = err
 			return 0
 		}
 
 		// delete old authors
-		_, err = tx.Exec(`DELETE FROM author WHERE id IN (SELECT author_id FROM author_attr WHERE article_id=?)`, artID)
+		_, err = tx.Exec(ss.rebind(`DELETE FROM author WHERE id IN (SELECT author_id FROM author_attr WHERE article_id=?)`), artID)
 		if err != nil {
 			t.err = err
 			return 0
 		}
-		_, err = tx.Exec(`DELETE FROM author_attr WHERE article_id=?`, artID)
+		_, err = tx.Exec(ss.rebind(`DELETE FROM author_attr WHERE article_id=?`), artID)
 		if err != nil {
 			t.err = err
 			return 0
@@ -142,7 +145,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 	}
 
 	for _, u := range art.URLs {
-		_, err = tx.Exec(`INSERT INTO article_url(article_id,url) VALUES(?,?)`, artID, u)
+		_, err = tx.Exec(ss.rebind(`INSERT INTO article_url(article_id,url) VALUES(?,?)`), artID, u)
 		if err != nil {
 			t.err = fmt.Errorf("failed adding url %s: %s", u, err)
 			return 0
@@ -150,7 +153,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 	}
 
 	for _, k := range art.Keywords {
-		_, err = tx.Exec(`INSERT INTO article_keyword(article_id,name,url) VALUES(?,?,?)`,
+		_, err = tx.Exec(ss.rebind(`INSERT INTO article_keyword(article_id,name,url) VALUES(?,?,?)`),
 			artID,
 			k.Name,
 			k.URL)
@@ -162,7 +165,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 
 	for _, author := range art.Authors {
 		var authorID int
-		result, err := tx.Exec(`INSERT INTO author(name,rel_link,email,twitter) VALUES (?,?,?,?)`,
+		result, err := tx.Exec(ss.rebind(`INSERT INTO author(name,rel_link,email,twitter) VALUES (?,?,?,?)`),
 			author.Name,
 			author.RelLink,
 			author.Email,
@@ -171,6 +174,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 			t.err = err
 			return 0
 		}
+		// TODO: LastInsertId() not supported on postgres
 		tmpID, err := result.LastInsertId()
 		if err != nil {
 			t.err = err
@@ -178,7 +182,7 @@ func (t *Transaction) Stash(art *store.Article) int {
 		}
 		authorID = int(tmpID)
 
-		_, err = tx.Exec(`INSERT INTO author_attr(author_id,article_id) VALUES (?,,?)`,
+		_, err = tx.Exec(ss.rebind(`INSERT INTO author_attr(author_id,article_id) VALUES (?,?)`),
 			authorID,
 			artID)
 		if err != nil {
@@ -252,6 +256,7 @@ func (t *Transaction) createPublication(pub *store.Publication) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// TODO: postgres support!
 	pubID, err := result.LastInsertId()
 	if err != nil {
 		return 0, err
