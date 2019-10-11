@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/bcampbell/scrapeomat/store"
-	"github.com/lib/pq"
 	"regexp"
 	"strings"
 	"time"
@@ -33,7 +32,7 @@ type SQLArtIter struct {
 
 // eg "postgres", "postgres://username@localhost/dbname"
 // eg "sqlite3", "/tmp/foo.db"
-func NewSQLStore(driver string, connStr string) (*SQLStore, error) {
+func New(driver string, connStr string) (*SQLStore, error) {
 
 	//db, err := sql.Open("postgres", connStr)
 	db, err := sql.Open(driver, connStr)
@@ -102,15 +101,15 @@ var timeFmts = []string{
 	"2006-01-02",
 }
 
-func (ss *SQLStore) cvtTime(timestamp string) pq.NullTime {
+func (ss *SQLStore) cvtTime(timestamp string) sql.NullTime {
 	for _, layout := range timeFmts {
 		t, err := time.ParseInLocation(layout, timestamp, ss.loc)
 		if err == nil {
-			return pq.NullTime{Time: t, Valid: true}
+			return sql.NullTime{Time: t, Valid: true}
 		}
 	}
 
-	return pq.NullTime{Valid: false}
+	return sql.NullTime{Valid: false}
 }
 
 var datePat = regexp.MustCompile(`^\d\d\d\d-\d\d-\d\d`)
@@ -278,7 +277,7 @@ func (it *SQLArtIter) NextArticle() *store.Article {
 	var art store.Article
 	var p = &art.Publication
 
-	var published, updated pq.NullTime
+	var published, updated sql.NullTime
 	var extra []byte
 	err := it.rows.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &extra, &p.Code, &p.Name, &p.Domain)
 	if err != nil {
@@ -471,7 +470,7 @@ func (ss *SQLStore) FetchArt(artID int) (*store.Article, error) {
 	var art store.Article
 	var p = &art.Publication
 
-	var published, updated pq.NullTime
+	var published, updated sql.NullTime
 	var extra []byte
 	if err := row.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &extra, &p.Code, &p.Name, &p.Domain); err != nil {
 		return nil, err

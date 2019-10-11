@@ -10,9 +10,9 @@ import (
 
 func TestStuff(t *testing.T) {
 
-	ss, err := NewSQLStore("sqlite3", "file:/tmp/wibble.db")
+	ss, err := New("sqlite3", "file:/tmp/wibble.db")
 	if err != nil {
-		t.Errorf("NewSQLStore failed: %s\n", err)
+		t.Errorf("New: %s\n", err)
 		return
 	}
 

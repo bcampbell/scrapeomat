@@ -35,15 +35,15 @@ func (ss *SQLStore) checkSchema() error {
 
 		`CREATE TABLE article (
 	        id INTEGER PRIMARY KEY,
+			added TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		    canonical_url TEXT NOT NULL,
 			headline TEXT NOT NULL,
-	        content TEXT NOT NULL,
-		    published TIMESTAMP NOT NULL,
-			updated TIMESTAMP NOT NULL,
+	        content TEXT NOT NULL DEFAULT '',
+		    published TIMESTAMP DEFAULT NULL,
+			updated TIMESTAMP DEFAULT NULL,
 	        publication_id INTEGER NOT NULL,
 	        section TEXT NOT NULL DEFAULT '',
 	        extra TEXT NOT NULL DEFAULT '',
-			added TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
 			FOREIGN KEY(publication_id) REFERENCES publication(id) )`,
 
 		`CREATE TABLE author (
