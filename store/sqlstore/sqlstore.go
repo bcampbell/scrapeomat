@@ -443,7 +443,15 @@ func (ss *SQLStore) FetchSummary(filt *store.Filter, group string) ([]store.Date
 		return nil, fmt.Errorf("Bad group field (%s)", group)
 	}
 
-	q := `SELECT CAST( ` + dayField + ` AS DATE) AS day, p.code, COUNT(*)
+	if ss.driverName != "sqlite3" {
+		panic("TODO: postgresql")
+		//q := `SELECT CAST( ` + dayField + ` AS DATE) AS day, p.code, COUNT(*)
+		//    FROM (article a INNER JOIN publication p ON a.publication_id=p.id) ` +
+		//	whereClause + ` GROUP BY day, p.code ORDER BY day ASC ,p.code ASC;`
+	}
+
+	// sqlite3
+	q := `SELECT DATE(` + dayField + `) AS day, p.code, COUNT(*)
 	    FROM (article a INNER JOIN publication p ON a.publication_id=p.id) ` +
 		whereClause + ` GROUP BY day, p.code ORDER BY day ASC ,p.code ASC;`
 
@@ -458,9 +466,22 @@ func (ss *SQLStore) FetchSummary(filt *store.Filter, group string) ([]store.Date
 	out := []store.DatePubCount{}
 	for rows.Next() {
 		foo := store.DatePubCount{}
-		if err := rows.Scan(&foo.Date, &foo.PubCode, &foo.Count); err != nil {
+		var day sql.NullString
+		if err := rows.Scan(&day, &foo.PubCode, &foo.Count); err != nil {
 			return nil, err
 		}
+
+		// TODO: sqlite3 driver can't seem to scan a DATE() to a time.Time (or sql.NullTime)
+		// TODO: INVESTIGATE!
+		// for now, workaround with string parsing.
+		if day.Valid {
+			t, err := time.Parse("2006-01-02", day.String)
+			if err == nil {
+				foo.Date = t
+			}
+		}
+		//ss.DebugLog.Printf("summary: %v\n", foo)
+
 		out = append(out, foo)
 	}
 	if err := rows.Err(); err != nil {
