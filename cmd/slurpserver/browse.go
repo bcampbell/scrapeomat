@@ -27,15 +27,15 @@ func (srv *SlurpServer) browseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, _ := srv.db.Fetch(filt)
-	arts := make([]*store.Article, 0)
-	for fetched := range c {
-		if fetched.Err != nil {
-			http.Error(w, fmt.Sprintf("Fetch error: %s", fetched.Err), 500)
-			return
-		}
-
-		arts = append(arts, fetched.Art)
+	it := srv.db.Fetch(filt)
+	defer it.Close()
+	arts := []*store.Article{}
+	for it.Next() {
+		arts = append(arts, it.Article())
+	}
+	if it.Err() != nil {
+		http.Error(w, fmt.Sprintf("Fetch error: %s", it.Err()), 500)
+		return
 	}
 
 	//

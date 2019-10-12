@@ -180,34 +180,37 @@ func (srv *SlurpServer) performSlurp(w http.ResponseWriter, filt *store.Filter) 
 
 	artCnt := 0
 	byteCnt := 0
-	c, abort := srv.db.Fetch(filt)
+	it := srv.db.Fetch(filt)
+	defer it.Close()
 	maxID := 0
-	for fetched := range c {
-		if fetched.Art != nil {
-			msg := Msg{Article: fetched.Art}
-			n, err := writeMsg(w, &msg)
-			if err != nil {
-				abort <- struct{}{}
-				return err, artCnt, byteCnt
-			}
-			byteCnt += n
-			artCnt++
-			if fetched.Art.ID > maxID {
-				maxID = fetched.Art.ID
-			}
+	for it.Next() {
+		art := it.Article()
+		if art == nil {
+			break
 		}
 
-		if fetched.Err != nil {
-			// uhoh - some sort of database error... log and send it on to the client
-			msg := Msg{Error: fmt.Sprintf("fetch error: %s\n", fetched.Err)}
-			srv.ErrLog.Printf("%s\n", msg.Error)
-			n, err := writeMsg(w, &msg)
-			if err != nil {
-				abort <- struct{}{}
-				return err, artCnt, byteCnt
-			}
-			byteCnt += n
+		msg := Msg{Article: art}
+		n, err := writeMsg(w, &msg)
+		if err != nil {
+			return err, artCnt, byteCnt
 		}
+		byteCnt += n
+		artCnt++
+		if art.ID > maxID {
+			maxID = art.ID
+		}
+	}
+
+	if it.Err() != nil {
+		// uhoh - some sort of database error... log and send it on to the client
+		msg := Msg{Error: fmt.Sprintf("fetch error: %s\n", it.Err)}
+		srv.ErrLog.Printf("%s\n", msg.Error)
+		n, err := writeMsg(w, &msg)
+		if err != nil {
+			return err, artCnt, byteCnt
+		}
+		byteCnt += n
+		return it.Err(), artCnt, byteCnt
 	}
 
 	// looks like more articles to fetch?
@@ -217,7 +220,6 @@ func (srv *SlurpServer) performSlurp(w http.ResponseWriter, filt *store.Filter) 
 		msg.Next.SinceID = maxID
 		n, err := writeMsg(w, &msg)
 		if err != nil {
-			abort <- struct{}{}
 			return err, artCnt, byteCnt
 		}
 		byteCnt += n
@@ -284,8 +286,8 @@ func (srv *SlurpServer) summaryHandler(ctx *Context, w http.ResponseWriter, r *h
 			cooked[raw.PubCode] = mm
 		}
 		var day string
-		if raw.Date.Valid {
-			day = raw.Date.Time.Format("2006-01-02")
+		if !raw.Date.IsZero() {
+			day = raw.Date.Format("2006-01-02")
 		}
 		mm[day] = raw.Count
 	}

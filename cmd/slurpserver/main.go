@@ -7,13 +7,17 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/bcampbell/scrapeomat/store"
 	"log"
 	"os"
+
+	"github.com/bcampbell/scrapeomat/store/sqlstore"
+	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var opts struct {
 	verbosity int
+	driver    string
 	dbURL     string
 	port      int
 	prefix    string
@@ -23,6 +27,7 @@ var opts struct {
 func main() {
 	//	flag.IntVar(&opts.verbosity, "v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
 	flag.StringVar(&opts.dbURL, "db", "", "database connection string (eg postgres://user:password@localhost/scrapeomat) or set $SCRAPEOMAT_DB")
+	flag.StringVar(&opts.driver, "driver", "sqlite3", "database driver name")
 	flag.StringVar(&opts.prefix, "prefix", "", `url prefix (eg "/ukarticles") to allow multiple servers on same port`)
 	flag.BoolVar(&opts.browse, "browse", false, `enable html browsing of articles`)
 	flag.IntVar(&opts.port, "port", 12345, "port to run server on")
@@ -37,6 +42,11 @@ func main() {
 		infoLog = nullLogger{}
 	}
 
+	driver := opts.driver
+	if driver == "" {
+		driver = os.Getenv("SCRAPEOMAT_DRIVER")
+	}
+
 	connStr := opts.dbURL
 	if connStr == "" {
 		connStr = os.Getenv("SCRAPEOMAT_DB")
@@ -47,7 +57,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := store.NewSQLStore(connStr)
+	db, err := sqlstore.New(driver, connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)
