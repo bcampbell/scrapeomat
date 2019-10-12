@@ -25,9 +25,10 @@ type SQLStore struct {
 }
 
 type SQLArtIter struct {
-	rows *sql.Rows
-	ss   *SQLStore
-	err  error
+	rows    *sql.Rows
+	ss      *SQLStore
+	current *store.Article
+	err     error
 }
 
 // eg "postgres", "postgres://username@localhost/dbname"
@@ -238,13 +239,13 @@ func (ss *SQLStore) FetchCount(filt *store.Filter) (int, error) {
 	return cnt, err
 }
 
-func (ss *SQLStore) Fetch(filt *store.Filter) (store.ArtIter, error) {
+func (ss *SQLStore) Fetch(filt *store.Filter) store.ArtIter {
 
 	whereClause, params := buildWhere(filt)
 
 	q := `SELECT a.id,a.headline,a.canonical_url,a.content,a.published,a.updated,a.section,a.extra,p.code,p.name,p.domain
 	               FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
-	               ` + whereClause + ` ORDER BY id`
+	               ` + whereClause + ` ORDER BY a.id`
 
 	if filt.Count > 0 {
 		q += fmt.Sprintf(" LIMIT %d", filt.Count)
@@ -254,27 +255,35 @@ func (ss *SQLStore) Fetch(filt *store.Filter) (store.ArtIter, error) {
 	ss.DebugLog.Printf("fetch params: %+v\n", params)
 
 	rows, err := ss.db.Query(ss.rebind(q), params...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &SQLArtIter{ss: ss, rows: rows}, nil
+	return &SQLArtIter{ss: ss, rows: rows, err: err}
 }
 
 func (it *SQLArtIter) Close() error {
-	return it.rows.Close()
+	// may not even have got as far as initing rows!
+	var err error
+	if it.rows != nil {
+		err = it.rows.Close()
+		it.rows = nil
+	}
+	return err
 }
 
 func (it *SQLArtIter) Err() error {
 	return it.err
 }
 
-func (it *SQLArtIter) NextArticle() *store.Article {
+// if it returns true there will be an article.
+func (it *SQLArtIter) Next() bool {
+	it.current = nil
+	if it.err != nil {
+		return false // no more, if we're in error state
+	}
 	if !it.rows.Next() {
 		it.err = it.rows.Err()
-		return nil // all done
+		return false // all done
 	}
-	var art store.Article
+
+	art := &store.Article{}
 	var p = &art.Publication
 
 	var published, updated sql.NullTime
@@ -282,7 +291,7 @@ func (it *SQLArtIter) NextArticle() *store.Article {
 	err := it.rows.Scan(&art.ID, &art.Headline, &art.CanonicalURL, &art.Content, &published, &updated, &art.Section, &extra, &p.Code, &p.Name, &p.Domain)
 	if err != nil {
 		it.err = err
-		return nil
+		return false
 	}
 
 	if published.Valid {
@@ -295,21 +304,21 @@ func (it *SQLArtIter) NextArticle() *store.Article {
 	urls, err := it.ss.fetchURLs(art.ID)
 	if err != nil {
 		it.err = err
-		return nil
+		return false
 	}
 	art.URLs = urls
 
 	keywords, err := it.ss.fetchKeywords(art.ID)
 	if err != nil {
 		it.err = err
-		return nil
+		return false
 	}
 	art.Keywords = keywords
 
 	authors, err := it.ss.fetchAuthors(art.ID)
 	if err != nil {
 		it.err = err
-		return nil
+		return false
 	}
 	art.Authors = authors
 
@@ -318,10 +327,17 @@ func (it *SQLArtIter) NextArticle() *store.Article {
 		err = json.Unmarshal(extra, &art.Extra)
 		if err != nil {
 			it.err = err
-			return nil
+			return false
 		}
 	}
-	return &art
+
+	// if we get this far there's an article ready.
+	it.current = art
+	return true
+}
+
+func (it *SQLArtIter) Article() *store.Article {
+	return it.current
 }
 
 func (ss *SQLStore) fetchURLs(artID int) ([]string, error) {

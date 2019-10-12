@@ -8,7 +8,8 @@ type Logger interface {
 	Printf(format string, v ...interface{})
 }
 type ArtIter interface {
-	NextArticle() *Article
+	Next() bool
+	Article() *Article
 	Err() error
 	Close() error
 }
@@ -25,8 +26,7 @@ type Store interface {
 	WhichAreNew(artURLs []string) ([]string, error)
 	FindURLs(urls []string) ([]int, error)
 	FetchCount(filt *Filter) (int, error)
-	// TODO: fetch should return a cursor/iterator
-	Fetch(filt *Filter) (ArtIter, error)
+	Fetch(filt *Filter) ArtIter
 	FetchPublications() ([]Publication, error)
 	FetchSummary(filt *Filter, group string) ([]DatePubCount, error)
 	FetchArt(artID int) (*Article, error)
