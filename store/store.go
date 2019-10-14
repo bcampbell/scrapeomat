@@ -22,7 +22,7 @@ type DatePubCount struct {
 
 type Store interface {
 	Close()
-	Stash(art *Article) (int, error)
+	Stash(arts ...*Article) ([]int, error)
 	WhichAreNew(artURLs []string) ([]string, error)
 	FindURLs(urls []string) ([]int, error)
 	FetchCount(filt *Filter) (int, error)

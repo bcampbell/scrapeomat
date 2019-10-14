@@ -82,17 +82,6 @@ func (ss *SQLStore) rebind(q string) string {
 	return rebind(bindType(ss.driverName), q)
 }
 
-func (ss *SQLStore) Begin() *Transaction {
-	return newTransaction(ss)
-}
-
-func (ss *SQLStore) Stash(art *store.Article) (int, error) {
-	tx := ss.Begin()
-	artID := tx.Stash(art)
-	err := tx.Close()
-	return artID, err
-}
-
 var timeFmts = []string{
 	time.RFC3339,
 	"2006-01-02T15:04Z07:00",

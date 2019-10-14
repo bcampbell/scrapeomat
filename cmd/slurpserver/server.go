@@ -185,9 +185,6 @@ func (srv *SlurpServer) performSlurp(w http.ResponseWriter, filt *store.Filter) 
 	maxID := 0
 	for it.Next() {
 		art := it.Article()
-		if art == nil {
-			break
-		}
 
 		msg := Msg{Article: art}
 		n, err := writeMsg(w, &msg)
