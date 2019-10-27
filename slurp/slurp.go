@@ -150,7 +150,7 @@ func (s *Slurper) Slurp2(filt *Filter) *ArtStream {
 	u := s.Location + "/api/slurp?" + params.Encode()
 
 	out := &ArtStream{}
-	// fmt.Printf("request: %s\n", u)
+	//	fmt.Printf("request: %s\n", u)
 	resp, err := client.Get(u)
 	if err != nil {
 		out.err = fmt.Errorf("HTTP Get failed: %s", err)
@@ -208,4 +208,36 @@ func (as *ArtStream) Next() (*Article, error) {
 			return msg.Article, nil
 		}
 	}
+}
+
+// FetchCount returns the number of articles on the server matching the filter.
+func (s *Slurper) FetchCount(filt *Filter) (int, error) {
+	client := s.Client
+	if client == nil {
+		client = &http.Client{}
+	}
+
+	params := filt.params()
+
+	u := s.Location + "/api/count?" + params.Encode()
+
+	//	fmt.Printf("request: %s\n", u)
+	resp, err := client.Get(u)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("HTTP Error code %s", resp.Status)
+	}
+
+	var cnt struct {
+		ArticleCount int `json:"article_count"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&cnt)
+	if err != nil {
+		return 0, err
+	}
+
+	return cnt.ArticleCount, nil
 }
