@@ -18,6 +18,7 @@ import (
 
 type Options struct {
 	dayFrom, dayTo string
+	outputFormat   string // "json", "json-stream"
 }
 
 // parseDays converts the date range options into time.Time.
@@ -67,6 +68,7 @@ func main() {
 
 	flag.StringVar(&opts.dayFrom, "from", "", "from date (YYYY-MM-DD)")
 	flag.StringVar(&opts.dayTo, "to", "", "to date (YYYY-MM-DD)")
+	flag.StringVar(&opts.outputFormat, "f", "json-stream", "output format: json, json-stream")
 	flag.Parse()
 
 	var err error
@@ -142,7 +144,9 @@ func run(apiURL string, opts *Options) error {
 
 	out := os.Stdout
 
-	fmt.Fprintf(out, "[\n")
+	if opts.outputFormat == "json" {
+		fmt.Fprintf(out, "[\n")
+	}
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
@@ -205,9 +209,11 @@ func run(apiURL string, opts *Options) error {
 			}
 
 			// output it
-			if numOutput > 0 {
-				// Fudge our fake js array separator
-				fmt.Fprintf(out, ",\n")
+			if opts.outputFormat == "json" {
+				if numOutput > 0 {
+					// Fudge our fake js array separator
+					fmt.Fprintf(out, ",\n")
+				}
 			}
 			err = enc.Encode(art)
 			if err != nil {
@@ -222,8 +228,10 @@ func run(apiURL string, opts *Options) error {
 			break
 		}
 	}
-	// terminate our fake js array
-	fmt.Fprintf(out, "\n]\n")
+	if opts.outputFormat == "json" {
+		// terminate our fake js array
+		fmt.Fprintf(out, "\n]\n")
+	}
 	return nil
 }
 
