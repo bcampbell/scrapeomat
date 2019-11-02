@@ -1,20 +1,34 @@
 package sqlstore
 
 import (
+	"database/sql"
 	"fmt"
-	"github.com/bcampbell/scrapeomat/store"
-	_ "github.com/mattn/go-sqlite3"
 	"testing"
 	"time"
+
+	"github.com/bcampbell/scrapeomat/store"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestStuff(t *testing.T) {
 
-	ss, err := New("sqlite3", "file:/tmp/wibble.db")
+	// NOTE: ":memory" won't work, as it only persists for single connection.
+	// Use shared cache to share the database across all connections in
+	// this process.
+	// see https://github.com/mattn/go-sqlite3#faq
+	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
 	if err != nil {
 		t.Errorf("New: %s\n", err)
 		return
 	}
+	db.SetConnMaxLifetime(-1)
+	db.SetMaxIdleConns(2) // should be default but may change in future
+	ss, err := NewFromDB("sqlite3", db)
+	if err != nil {
+		t.Errorf("New: %s\n", err)
+		return
+	}
+	ss.DebugLog = stderrLogger{}
 
 	doStash(t, ss)
 
@@ -81,6 +95,9 @@ func doStash(t *testing.T, ss *SQLStore) {
 		}
 		// TODO: check other fields here
 		fetchCnt++
+	}
+	if it.Err() != nil {
+		t.Fatalf("Fetch failed: %s", it.Err())
 	}
 	if fetchCnt != len(testArts) {
 		t.Fatalf("Fetch count wrong (got %d, expected %d)",

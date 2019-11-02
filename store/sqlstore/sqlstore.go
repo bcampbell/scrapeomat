@@ -4,15 +4,23 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/bcampbell/scrapeomat/store"
+	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/bcampbell/scrapeomat/store"
 )
 
 type nullLogger struct{}
 
 func (l nullLogger) Printf(format string, v ...interface{}) {
+}
+
+type stderrLogger struct{}
+
+func (l stderrLogger) Printf(format string, v ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, v...)
 }
 
 // SQLStore stashes articles in an SQL database
@@ -31,6 +39,13 @@ type SQLArtIter struct {
 	err     error
 }
 
+// Which method to use to get last insert IDs
+const (
+	DUNNO     = iota
+	RESULT    // use Result.LastInsertID()
+	RETURNING // use sql "RETURNING" clause
+)
+
 // eg "postgres", "postgres://username@localhost/dbname"
 // eg "sqlite3", "/tmp/foo.db"
 func New(driver string, connStr string) (*SQLStore, error) {
@@ -40,8 +55,11 @@ func New(driver string, connStr string) (*SQLStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	return NewFromDB(driver, db)
+}
 
-	err = db.Ping()
+func NewFromDB(driver string, db *sql.DB) (*SQLStore, error) {
+	err := db.Ping()
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -62,6 +80,7 @@ func New(driver string, connStr string) (*SQLStore, error) {
 		DebugLog:   nullLogger{},
 	}
 
+	// TODO: would be nice to have logger set up before here...
 	err = ss.checkSchema()
 	if err != nil {
 		db.Close()
@@ -80,6 +99,24 @@ func (ss *SQLStore) Close() {
 
 func (ss *SQLStore) rebind(q string) string {
 	return rebind(bindType(ss.driverName), q)
+}
+
+// can we use Result.LastInsertID() or do we need to fiddle the SQL?
+func (ss *SQLStore) insertIDType() int {
+	switch ss.driverName {
+	case "postgres", "pgx", "pq-timeouts", "cloudsqlpostgres", "ql":
+		return RETURNING
+	case "sqlite3", "mysql":
+		return RESULT
+	case "oci8", "ora", "goracle":
+		// ora: https://godoc.org/gopkg.in/rana/ora.v4#hdr-LastInsertId
+		return DUNNO
+	case "sqlserver":
+		// https://github.com/denisenkom/go-mssqldb#important-notes
+		return DUNNO
+	default:
+		return DUNNO
+	}
 }
 
 var timeFmts = []string{

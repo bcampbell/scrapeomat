@@ -11,6 +11,7 @@ func (ss *SQLStore) checkSchema() error {
 	if err != nil {
 		return err
 	}
+	ss.DebugLog.Printf("Existing schema version: %d\n", ver)
 	if ver == 7 {
 		return nil // up to date.
 	}
@@ -93,6 +94,7 @@ func (ss *SQLStore) checkSchema() error {
 
 	for _, stmt := range stmts {
 		_, err := ss.db.Exec(stmt)
+		//ss.DebugLog.Printf("%s (%v)\n", stmt, err)
 		if err != nil {
 			return err
 		}

@@ -3,7 +3,9 @@ package sqlstore
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+
 	"github.com/bcampbell/scrapeomat/store"
 )
 
@@ -53,25 +55,10 @@ func (ss *SQLStore) stashArticle(tx *sql.Tx, art *store.Article) (int, error) {
 
 	if artID == 0 {
 		// it's a new article
-		q := `INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section,extra) VALUES(?,?,?,?,?,?,?,?)`
-		result, err := tx.Exec(ss.rebind(q),
-			art.CanonicalURL,
-			art.Headline,
-			art.Content,
-			ss.cvtTime(art.Published),
-			ss.cvtTime(art.Updated),
-			pubID,
-			art.Section,
-			extra)
+		artID, err = ss.insertArticle(tx, art, pubID, extra)
 		if err != nil {
 			return 0, err
 		}
-		// TODO: not supported under PG? (use "RETURNING" syntax)
-		tmpID, err := result.LastInsertId()
-		if err != nil {
-			return 0, err
-		}
-		artID = int(tmpID)
 	} else {
 		// updating an existing article
 
@@ -159,6 +146,52 @@ func (ss *SQLStore) stashArticle(tx *sql.Tx, art *store.Article) (int, error) {
 	return artID, nil
 }
 
+func (ss *SQLStore) insertArticle(tx *sql.Tx, art *store.Article, pubID int, extra []byte) (int, error) {
+	switch ss.insertIDType() {
+	case RESULT:
+		{
+			q := `INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section,extra) VALUES(?,?,?,?,?,?,?,?)`
+			result, err := tx.Exec(ss.rebind(q),
+				art.CanonicalURL,
+				art.Headline,
+				art.Content,
+				ss.cvtTime(art.Published),
+				ss.cvtTime(art.Updated),
+				pubID,
+				art.Section,
+				extra)
+			if err != nil {
+				return 0, err
+			}
+			tmpID, err := result.LastInsertId()
+			if err != nil {
+				return 0, err
+			}
+			return int(tmpID), nil
+		}
+	case RETURNING:
+		{
+			var lastID int
+			q := `INSERT INTO article(canonical_url, headline, content, published, updated, publication_id, section,extra) VALUES(?,?,?,?,?,?,?,?) RETURNING id`
+			err := tx.QueryRow(ss.rebind(q),
+				art.CanonicalURL,
+				art.Headline,
+				art.Content,
+				ss.cvtTime(art.Published),
+				ss.cvtTime(art.Updated),
+				pubID,
+				art.Section,
+				extra).Scan(&lastID)
+			if err != nil {
+				return 0, err
+			}
+			return lastID, nil
+		}
+	default:
+		return 0, errors.New("unsupported db driver")
+	}
+}
+
 func (ss *SQLStore) findOrCreatePublication(tx *sql.Tx, pub *store.Publication) (int, error) {
 	pubID, err := ss.findPublication(tx, pub)
 	if err != nil {
@@ -167,7 +200,7 @@ func (ss *SQLStore) findOrCreatePublication(tx *sql.Tx, pub *store.Publication) 
 	if pubID != 0 {
 		return pubID, nil
 	}
-	return ss.createPublication(tx, pub)
+	return ss.insertPublication(tx, pub)
 }
 
 // returns 0 if no match
@@ -211,19 +244,37 @@ func (ss *SQLStore) findPublication(tx *sql.Tx, pub *store.Publication) (int, er
 	return 0, nil // no match
 }
 
-func (ss *SQLStore) createPublication(tx *sql.Tx, pub *store.Publication) (int, error) {
-	// create new
-	result, err := tx.Exec(`INSERT INTO publication(code,name,domain) VALUES(?,?,?)`,
-		pub.Code,
-		pub.Name,
-		pub.Domain)
-	if err != nil {
-		return 0, err
+func (ss *SQLStore) insertPublication(tx *sql.Tx, pub *store.Publication) (int, error) {
+	switch ss.insertIDType() {
+	case RESULT: // sqlite, mysql...
+		{
+			result, err := tx.Exec(`INSERT INTO publication(code,name,domain) VALUES(?,?,?)`,
+				pub.Code,
+				pub.Name,
+				pub.Domain)
+			if err != nil {
+				return 0, err
+			}
+			pubID, err := result.LastInsertId()
+			if err != nil {
+				return 0, err
+			}
+			return int(pubID), nil
+		}
+	case RETURNING: // postgresql
+		{
+			var lastID int
+			err := tx.QueryRow(`INSERT INTO publication(code,name,domain) VALUES(?,?,?) RETURNING id`,
+				pub.Code,
+				pub.Name,
+				pub.Domain).Scan(&lastID)
+			if err != nil {
+				return 0, err
+			}
+			return lastID, nil
+		}
+	default:
+		return 0, errors.New("unsupported db driver")
 	}
-	// TODO: postgres support!
-	pubID, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-	return int(pubID), nil
+
 }
