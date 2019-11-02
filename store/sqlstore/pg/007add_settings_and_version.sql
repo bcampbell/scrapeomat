@@ -1,0 +1,6 @@
+BEGIN;
+CREATE TABLE version (ver INTEGER NOT NULL);
+CREATE TABLE settings (n TEXT, v TEXT NOT NULL);
+INSERT INTO version (ver) VALUES (7);
+COMMIT;
+

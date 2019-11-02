@@ -4,6 +4,8 @@ DROP TABLE IF EXISTS author_attr CASCADE;
 DROP TABLE IF EXISTS article CASCADE;
 DROP TABLE IF EXISTS author CASCADE;
 DROP TABLE IF EXISTS publication CASCADE;
+DROP TABLE IF EXISTS version;
+DROP TABLE IF EXISTS settings;
 
 CREATE TABLE publication (
     id SERIAL PRIMARY KEY,
@@ -67,6 +69,7 @@ CREATE INDEX ON article_keyword(id);
 CREATE INDEX ON article_keyword(article_id);
 CREATE INDEX ON article_keyword(name);
 
-
-
+CREATE TABLE version (ver INTEGER NOT NULL);
+CREATE TABLE settings (n TEXT, v TEXT NOT NULL);
+INSERT INTO version (ver) VALUES (7);
 

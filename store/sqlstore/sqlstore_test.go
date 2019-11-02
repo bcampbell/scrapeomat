@@ -1,41 +1,14 @@
 package sqlstore
 
 import (
-	"database/sql"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/bcampbell/scrapeomat/store"
-	_ "github.com/mattn/go-sqlite3"
 )
 
-func TestStuff(t *testing.T) {
-
-	// NOTE: ":memory" won't work, as it only persists for single connection.
-	// Use shared cache to share the database across all connections in
-	// this process.
-	// see https://github.com/mattn/go-sqlite3#faq
-	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
-	if err != nil {
-		t.Errorf("New: %s\n", err)
-		return
-	}
-	db.SetConnMaxLifetime(-1)
-	db.SetMaxIdleConns(2) // should be default but may change in future
-	ss, err := NewFromDB("sqlite3", db)
-	if err != nil {
-		t.Errorf("New: %s\n", err)
-		return
-	}
-	ss.DebugLog = stderrLogger{}
-
-	doStash(t, ss)
-
-	defer ss.Close()
-}
-
-func doStash(t *testing.T, ss *SQLStore) {
+func performDBTests(t *testing.T, ss *SQLStore) {
 
 	testArts := []*store.Article{
 		{
@@ -88,10 +61,10 @@ func doStash(t *testing.T, ss *SQLStore) {
 		got := it.Article()
 		expect, ok := lookup[got.CanonicalURL]
 		if !ok {
-			t.Fatalf("Fetch returned unexpected article")
+			t.Fatal("Fetch returned unexpected article")
 		}
 		if got.Headline != expect.Headline {
-			t.Fatalf("Fetch mismatch headline")
+			t.Fatal("Fetch mismatch headline")
 		}
 		// TODO: check other fields here
 		fetchCnt++
@@ -103,7 +76,6 @@ func doStash(t *testing.T, ss *SQLStore) {
 		t.Fatalf("Fetch count wrong (got %d, expected %d)",
 			fetchCnt, len(testArts))
 	}
-
 }
 
 func ExampleBuildWhere() {

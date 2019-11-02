@@ -210,7 +210,7 @@ func (ss *SQLStore) findPublication(tx *sql.Tx, pub *store.Publication) (int, er
 
 	if pub.Code != "" {
 
-		err = tx.QueryRow(`SELECT id FROM publication WHERE code=?`, pub.Code).Scan(&pubID)
+		err = tx.QueryRow(ss.rebind(`SELECT id FROM publication WHERE code=?`), pub.Code).Scan(&pubID)
 		if err == nil {
 			return pubID, nil // return existing publication
 		}
@@ -221,7 +221,7 @@ func (ss *SQLStore) findPublication(tx *sql.Tx, pub *store.Publication) (int, er
 
 	if pub.Name != "" {
 
-		err = tx.QueryRow(`SELECT id FROM publication WHERE name=?`, pub.Name).Scan(&pubID)
+		err = tx.QueryRow(ss.rebind(`SELECT id FROM publication WHERE name=?`), pub.Name).Scan(&pubID)
 		if err == nil {
 			return pubID, nil // return existing publication
 		}
@@ -232,7 +232,7 @@ func (ss *SQLStore) findPublication(tx *sql.Tx, pub *store.Publication) (int, er
 
 	// TODO: publications can have multiple domains...
 	if pub.Domain != "" {
-		err = tx.QueryRow(`SELECT id FROM publication WHERE domain=?`, pub.Domain).Scan(&pubID)
+		err = tx.QueryRow(ss.rebind(`SELECT id FROM publication WHERE domain=?`), pub.Domain).Scan(&pubID)
 		if err == nil {
 			return pubID, nil // return existing publication
 		}
@@ -248,7 +248,7 @@ func (ss *SQLStore) insertPublication(tx *sql.Tx, pub *store.Publication) (int, 
 	switch ss.insertIDType() {
 	case RESULT: // sqlite, mysql...
 		{
-			result, err := tx.Exec(`INSERT INTO publication(code,name,domain) VALUES(?,?,?)`,
+			result, err := tx.Exec(ss.rebind(`INSERT INTO publication(code,name,domain) VALUES(?,?,?)`),
 				pub.Code,
 				pub.Name,
 				pub.Domain)
@@ -264,7 +264,7 @@ func (ss *SQLStore) insertPublication(tx *sql.Tx, pub *store.Publication) (int, 
 	case RETURNING: // postgresql
 		{
 			var lastID int
-			err := tx.QueryRow(`INSERT INTO publication(code,name,domain) VALUES(?,?,?) RETURNING id`,
+			err := tx.QueryRow(ss.rebind(`INSERT INTO publication(code,name,domain) VALUES(?,?,?) RETURNING id`),
 				pub.Code,
 				pub.Name,
 				pub.Domain).Scan(&lastID)
