@@ -90,6 +90,27 @@ func NewFromDB(driver string, db *sql.DB) (*SQLStore, error) {
 	return &ss, nil
 }
 
+// Same as New(), but if driver or connStr is missing, will try and read them
+// from environment vars: SCRAPEOMAT_DRIVER & SCRAPEOMAT_DB.
+// If both driver and SCRAPEOMAT_DRIVER are empty, default is "sqlite3".
+func NewWithEnv(driver string, connStr string) (*SQLStore, error) {
+	if connStr == "" {
+		connStr = os.Getenv("SCRAPEOMAT_DB")
+	}
+	if driver == "" {
+		driver = os.Getenv("SCRAPEOMAT_DRIVER")
+		if driver == "" {
+			driver = "sqlite3"
+		}
+	}
+
+	if connStr == "" {
+		return nil, fmt.Errorf("no database specified (set SCRAPEOMAT_DB?)")
+	}
+
+	return New(driver, connStr)
+}
+
 func (ss *SQLStore) Close() {
 	if ss.db != nil {
 		ss.db.Close()

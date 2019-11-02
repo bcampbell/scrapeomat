@@ -7,12 +7,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/bcampbell/scrapeomat/store"
 	"html"
 	"os"
 	"strings"
 	//"time"
 	"path/filepath"
+
+	"github.com/bcampbell/scrapeomat/store"
+	"github.com/bcampbell/scrapeomat/store/sqlstore"
+	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // recursively grab list of all json files under start dir
@@ -38,7 +42,8 @@ func findJsonFiles(start string) ([]string, error) {
 }
 
 var opts struct {
-	db               string
+	driver           string
+	connStr          string
 	pubCode          string
 	ignoreLoadErrors bool
 	htmlEscape       bool
@@ -54,7 +59,8 @@ func main() {
 
 	flag.BoolVar(&opts.ignoreLoadErrors, "i", false, "ignore load errors - skip failed art and continue")
 	flag.BoolVar(&opts.htmlEscape, "e", false, "HTML-escape plain text content field")
-	flag.StringVar(&opts.db, "db", "", "database connection `string` (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	flag.StringVar(&opts.connStr, "db", "", "database connection string (or set SCRAPEOMAT_DB")
+	flag.StringVar(&opts.driver, "driver", "", "database driver name (defaults to sqlite3 if SCRAPEOMAT_DRIVER is unset)")
 	flag.StringVar(&opts.pubCode, "pubcode", "", "publication shortcode")
 	flag.Parse()
 
@@ -82,16 +88,7 @@ func main() {
 		return
 	*/
 
-	connStr := opts.db
-	if connStr == "" {
-		connStr = os.Getenv("SCRAPEOMAT_DB")
-	}
-
-	if connStr == "" {
-		fmt.Fprintf(os.Stderr, "ERROR: no database specified (use -db flag or set $SCRAPEOMAT_DB)\n")
-		os.Exit(1)
-	}
-	db, err := store.NewSQLStore(connStr)
+	db, err := sqlstore.NewWithEnv(opts.driver, opts.connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)

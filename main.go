@@ -63,7 +63,7 @@ options:
 	flag.BoolVar(&opts.discover, "discover", false, "run discovery for target sites, output article links to stdout, then exit")
 	flag.StringVar(&opts.inputFile, "i", "", "input file of URLs (runs scrapers then exit)")
 	flag.BoolVar(&opts.updateMode, "update", false, "Update articles already in db (when using -i)")
-	flag.StringVar(&opts.driver, "driver", "sqlite3", "database driver")
+	flag.StringVar(&opts.driver, "driver", "", "database driver")
 	flag.StringVar(&opts.db, "db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
 	flag.Parse()
 
@@ -129,21 +129,7 @@ options:
 		return
 	}
 
-	connStr := opts.db
-	if connStr == "" {
-		connStr = os.Getenv("SCRAPEOMAT_DB")
-	}
-	driver := opts.driver
-	if driver == "" {
-		driver = os.Getenv("SCRAPEOMAT_DRIVER")
-	}
-
-	if connStr == "" {
-		fmt.Fprintf(os.Stderr, "ERROR: no database specified (use -db flag or set $SCRAPEOMAT_DB)\n")
-		os.Exit(1)
-	}
-
-	db, err := sqlstore.New(driver, connStr)
+	db, err := sqlstore.NewWithEnv(opts.driver, opts.db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
 		os.Exit(1)

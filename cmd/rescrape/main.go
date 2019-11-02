@@ -22,9 +22,6 @@ import (
 	"compress/gzip"
 	"flag"
 	"fmt"
-	"github.com/bcampbell/arts/arts"
-	"github.com/bcampbell/scrapeomat/store"
-	"github.com/bcampbell/warc"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -33,6 +30,14 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/bcampbell/arts/arts"
+	"github.com/bcampbell/scrapeomat/store"
+	"github.com/bcampbell/scrapeomat/store/sqlstore"
+	"github.com/bcampbell/warc"
 )
 
 func worker(db store.Store, fileChan chan string, wg *sync.WaitGroup) {
@@ -113,24 +118,9 @@ func findWarcFiles(start string) ([]string, error) {
 }
 
 var opts struct {
-	databaseURL  string
+	db           string
+	driver       string
 	forceReplace bool
-}
-
-func openStore(connStr string) (store.Store, error) {
-	if connStr == "" {
-		connStr = os.Getenv("SCRAPEOMAT_DB")
-	}
-
-	if connStr == "" {
-		return nil, fmt.Errorf("no database specified (use -db flag or set $SCRAPEOMAT_DB)")
-	}
-
-	db, err := store.NewSQLStore(connStr)
-	if err != nil {
-		return nil, err
-	}
-	return db, nil
 }
 
 func main() {
@@ -140,7 +130,8 @@ func main() {
 		os.Exit(2)
 	}
 
-	flag.StringVar(&opts.databaseURL, "db", "", "database connection `string` (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	flag.StringVar(&opts.driver, "driver", "", "database driver (defaults to sqlite3 if SCRAPEOMAT_DRIVER is not set)")
+	flag.StringVar(&opts.db, "db", "", "database connection string")
 	flag.BoolVar(&opts.forceReplace, "f", false, "force replacement of articles already in db")
 	flag.Parse()
 
@@ -149,7 +140,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := openStore(opts.databaseURL)
+	db, err := sqlstore.NewWithEnv(opts.driver, opts.db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
