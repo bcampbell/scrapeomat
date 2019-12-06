@@ -86,6 +86,9 @@ func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string
 	// create the http client
 	// use politetripper to avoid hammering servers
 	var c *http.Client
+	transport := util.NewPoliteTripper()
+	transport.PerHostDelay = 1 * time.Second
+
 	if conf.Cookies || (conf.CookieFile != "") {
 		jar, err := cookiejar.New(nil)
 		if err != nil {
@@ -113,13 +116,13 @@ func NewScraper(name string, conf *ScraperConf, verbosity int, archiveDir string
 			jar.SetCookies(host, cookies)
 		}
 		c = &http.Client{
-			Transport: util.NewPoliteTripper(),
+			Transport: transport,
 			Jar:       jar,
 		}
 
 	} else {
 		c = &http.Client{
-			Transport: util.NewPoliteTripper(),
+			Transport: transport,
 		}
 	}
 	scraper.client = c
