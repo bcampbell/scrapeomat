@@ -63,8 +63,8 @@ options:
 	flag.BoolVar(&opts.discover, "discover", false, "run discovery for target sites, output article links to stdout, then exit")
 	flag.StringVar(&opts.inputFile, "i", "", "input file of URLs (runs scrapers then exit)")
 	flag.BoolVar(&opts.updateMode, "update", false, "Update articles already in db (when using -i)")
-	flag.StringVar(&opts.driver, "driver", "", "database driver")
-	flag.StringVar(&opts.db, "db", "", "database connection string (eg postgres://scrapeomat:password@localhost/scrapeomat)")
+	flag.StringVar(&opts.driver, "driver", "", "database driver (overrides SCRAPEOMAT_DRIVER)")
+	flag.StringVar(&opts.db, "db", "", "database connection string (overrides SCRAPEOMAT_DB)")
 	flag.Parse()
 
 	scrapers, err := buildScrapers()
