@@ -38,7 +38,25 @@ func performDBTests(t *testing.T, ss *SQLStore) {
 		t.Fatalf("wrong article count (got %d, expected %d)",
 			len(ids), len(testArts))
 	}
+	// the test articles now have IDs
+	for idx, id := range ids {
+		testArts[idx].ID = id
+	}
 
+	checkArticles(t, ss, testArts)
+
+	// Update an article
+	testArts[0].Headline = "A Revised Headline"
+	ids, err = ss.Stash(testArts[0])
+	if err != nil {
+		t.Fatalf("stash failed: %s", err)
+	}
+
+	//
+	checkArticles(t, ss, testArts)
+}
+
+func checkArticles(t *testing.T, ss *SQLStore, testArts []*store.Article) {
 	// check FetchCount()
 	cnt, err := ss.FetchCount(&store.Filter{})
 	if err != nil {

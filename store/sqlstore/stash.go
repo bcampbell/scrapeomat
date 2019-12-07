@@ -9,6 +9,11 @@ import (
 	"github.com/bcampbell/scrapeomat/store"
 )
 
+// Stash adds or updates articles in the database.
+// If the article has an ID, it's assumed to be an update.
+// If it doesn't, then it's an add.
+//
+// Returns a list of article IDs, one per input article.
 func (ss *SQLStore) Stash(arts ...*store.Article) ([]int, error) {
 	var err error
 	var tx *sql.Tx
@@ -62,7 +67,7 @@ func (ss *SQLStore) stashArticle(tx *sql.Tx, art *store.Article) (int, error) {
 	} else {
 		// updating an existing article
 
-		q := `UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,extra,added) = (?,?,?,?,?,?,?,?,NOW()) WHERE id=?`
+		q := `UPDATE article SET (canonical_url, headline, content, published, updated, publication_id, section,extra,added) = (?,?,?,?,?,?,?,?,` + ss.nowSQL() + `) WHERE id=?`
 		_, err = tx.Exec(ss.rebind(q),
 			art.CanonicalURL,
 			art.Headline,

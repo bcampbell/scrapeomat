@@ -140,6 +140,24 @@ func (ss *SQLStore) insertIDType() int {
 	}
 }
 
+// return a string with sql fn to return current timestamp.
+func (ss *SQLStore) nowSQL() string {
+	switch ss.driverName {
+	case "postgres", "pgx", "pq-timeouts", "cloudsqlpostgres", "ql":
+		return "NOW()"
+	case "sqlite3":
+		return "datetime('now','localtime')"
+	case "mysql":
+		return "PROPER_FN_GOES_HERE_PLEASE()"
+	case "oci8", "ora", "goracle":
+		return "PROPER_FN_GOES_HERE_PLEASE()"
+	case "sqlserver":
+		return "PROPER_FN_GOES_HERE_PLEASE()"
+	default:
+		return "PROPER_FN_GOES_HERE_PLEASE()"
+	}
+}
+
 var timeFmts = []string{
 	time.RFC3339,
 	"2006-01-02T15:04Z07:00",
