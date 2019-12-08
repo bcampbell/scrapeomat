@@ -31,3 +31,20 @@ type Store interface {
 	FetchSummary(filt *Filter, group string) ([]DatePubCount, error)
 	FetchArt(artID int) (*Article, error)
 }
+
+// TODO:
+// Need a cleaner definition of what's happening when we Stash articles.
+// For example, there's currently no simple way to add additional URLs to
+// an existing article.
+//
+// The common case we should optimise for:
+// We have a bunch of scraped articles. We don't know if they are in the
+// DB or not.
+// If an article already in db, we should merge it with existing entry
+// (at the very least, we should add any missing URLs).
+// Otherwise add it as a new article.
+// Maybe reject articles with an already-known ID?
+// Have a separate Update/Replace fn for those?
+//
+// See cmd/loadtool FancyStash() for a speculative implementation...
+//
