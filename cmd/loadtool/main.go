@@ -97,7 +97,7 @@ func main() {
 	imp := NewImporter(db)
 	err = imp.Import(jsonFiles...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
+		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
 	}
 

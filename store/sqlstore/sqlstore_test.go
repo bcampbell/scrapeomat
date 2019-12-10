@@ -2,6 +2,7 @@ package sqlstore
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -18,6 +19,10 @@ func performDBTests(t *testing.T, ss *SQLStore) {
 			Published:    "2019-04-01",
 			Updated:      "2019-04-01",
 			Publication:  store.Publication{Code: "example"},
+			Authors: []store.Author{
+				{Name: "Bob Smith"},
+				{Name: "Fred Door"},
+			},
 		},
 		{
 			CanonicalURL: "http://example.com/blah-blah",
@@ -81,10 +86,31 @@ func checkArticles(t *testing.T, ss *SQLStore, testArts []*store.Article) {
 		if !ok {
 			t.Fatal("Fetch returned unexpected article")
 		}
-		if got.Headline != expect.Headline {
-			t.Fatal("Fetch mismatch headline")
+		if got.CanonicalURL != expect.CanonicalURL {
+			t.Fatal("Fetch: mismatch canonical_url")
 		}
-		// TODO: check other fields here
+		if !equalStrings(expect.URLs, got.URLs) {
+			t.Fatalf("Fetch: mismatch urls (expect: %v got: %v)", expect.URLs, got.URLs)
+		}
+		if got.Headline != expect.Headline {
+			t.Fatal("Fetch: mismatch headline")
+		}
+
+		//slice might be nil or [] empty...
+		if len(expect.Authors) != 0 || len(got.Authors) != 0 {
+			if !reflect.DeepEqual(expect.Authors, got.Authors) {
+				t.Fatal("Fetch: mismatch authors")
+			}
+		}
+		if got.Content != expect.Content {
+			t.Fatal("Fetch: mismatch content")
+		}
+		if got.Section != expect.Section {
+			t.Fatal("Fetch: mismatch section")
+		}
+		// TODO: check
+		//  - Published, Updated fields here (requires parsing)
+		//  - keywords
 		fetchCnt++
 	}
 	if it.Err() != nil {
@@ -94,6 +120,19 @@ func checkArticles(t *testing.T, ss *SQLStore, testArts []*store.Article) {
 		t.Fatalf("Fetch count wrong (got %d, expected %d)",
 			fetchCnt, len(testArts))
 	}
+}
+
+func equalStrings(a []string, b []string) bool {
+	//slice might be nil or [] empty...
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func ExampleBuildWhere() {

@@ -123,25 +123,7 @@ func (ss *SQLStore) stashArticle(tx *sql.Tx, art *store.Article) (int, error) {
 	}
 
 	for _, author := range art.Authors {
-		var authorID int
-		result, err := tx.Exec(ss.rebind(`INSERT INTO author(name,rel_link,email,twitter) VALUES (?,?,?,?)`),
-			author.Name,
-			author.RelLink,
-			author.Email,
-			author.Twitter)
-		if err != nil {
-			return 0, err
-		}
-		// TODO: LastInsertId() not supported on postgres
-		tmpID, err := result.LastInsertId()
-		if err != nil {
-			return 0, err
-		}
-		authorID = int(tmpID)
-
-		_, err = tx.Exec(ss.rebind(`INSERT INTO author_attr(author_id,article_id) VALUES (?,?)`),
-			authorID,
-			artID)
+		err := ss.addAuthorToArticle(tx, artID, &author)
 		if err != nil {
 			return 0, err
 		}
@@ -149,6 +131,47 @@ func (ss *SQLStore) stashArticle(tx *sql.Tx, art *store.Article) (int, error) {
 
 	// all good.
 	return artID, nil
+}
+
+// addAuthorToArticle adds new rows to `author` and `author_attr`.
+func (ss *SQLStore) addAuthorToArticle(tx *sql.Tx, artID int, author *store.Author) error {
+	var authorID int
+	switch ss.insertIDType() {
+	case RESULT:
+		// sqlite3
+		result, err := tx.Exec(ss.rebind(`INSERT INTO author(name,rel_link,email,twitter) VALUES (?,?,?,?)`),
+			author.Name,
+			author.RelLink,
+			author.Email,
+			author.Twitter)
+		if err != nil {
+			return err
+		}
+		tmpID, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		authorID = int(tmpID)
+	case RETURNING:
+		// postgres
+		err := tx.QueryRow(ss.rebind(`INSERT INTO author(name,rel_link,email,twitter) VALUES (?,?,?,?) RETURNING id`),
+			author.Name,
+			author.RelLink,
+			author.Email,
+			author.Twitter).Scan(&authorID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// link author to the article
+	_, err := tx.Exec(ss.rebind(`INSERT INTO author_attr(author_id,article_id) VALUES (?,?)`),
+		authorID,
+		artID)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (ss *SQLStore) insertArticle(tx *sql.Tx, art *store.Article, pubID int, extra []byte) (int, error) {
