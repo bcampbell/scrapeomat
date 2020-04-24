@@ -88,7 +88,7 @@ func main() {
 	os.Exit(0)
 }
 
-// Post data returned from wp/post endpoint
+// Post data returned from wp/posts endpoint
 type Post struct {
 	Link  string `json:"link"`
 	Title struct {

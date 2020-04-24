@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/bcampbell/scrapeomat/store"
 )
@@ -48,7 +50,7 @@ func (imp *Importer) doFile(jsonFile string) error {
 
 	// main article loop here
 	for {
-		var in WireFmt
+		var in Art
 		err = dec.Decode(&in)
 		if err == io.EOF {
 			break
@@ -57,7 +59,7 @@ func (imp *Importer) doFile(jsonFile string) error {
 			return err
 		}
 
-		art := convertArticle(&in.Art)
+		art := convertArticle(&in)
 		imp.arts = append(imp.arts, art)
 		if len(imp.arts) >= BATCHSIZE {
 			err = imp.flush()
@@ -154,10 +156,14 @@ func convertArticle(src *Art) *store.Article {
 	// strip any existing ID
 	out.ID = 0
 
-	// urls...
+	// if no 'canonical_url' or 'urls', try 'url'...
 	if out.CanonicalURL == "" && len(out.URLs) == 0 && src.URL != "" {
 		out.CanonicalURL = src.URL
-		out.URLs = []string{src.URL}
+	}
+
+	// if no 'urls' use 'canonical_url'.
+	if len(out.URLs) == 0 && out.CanonicalURL != "" {
+		out.URLs = []string{out.CanonicalURL}
 	}
 
 	if opts.htmlEscape {
@@ -173,9 +179,22 @@ func convertArticle(src *Art) *store.Article {
 	if out.Publication.Code == "" {
 		if src.Pubcode != "" {
 			out.Publication.Code = src.Pubcode
-		} else {
+		} else if opts.pubCode != "" {
 			out.Publication.Code = opts.pubCode
+		} else {
+			out.Publication.Code = pubCodeFromURL(out.CanonicalURL)
 		}
 	}
 	return &out
+}
+
+func pubCodeFromURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	code := strings.ToLower(u.Hostname())
+	code = strings.TrimPrefix(code, "www.")
+	return code
 }
