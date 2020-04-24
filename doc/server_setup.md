@@ -197,15 +197,15 @@ TODO: add some nginx config examples, and maybe some for other web servers (eg A
 
 For development, I usually do something like this:
 
-    $ sudoedit /etc/postgresql/9.5/main/pg_hba.conf
+    $ sudoedit /etc/postgresql/<VERSION>/main/pg_hba.conf
 
 
-add a line:
+add a line _AFTER_(!) the first entry:
 ```
 local   {DBNAME}        scrape                    peer map=scrapedev
 ```
 
-add to `/etc/postgresql/9.5/main/pg_ident.conf`:
+add to `/etc/postgresql/<VERSION>/main/pg_ident.conf`:
 ```
 # MAPNAME       SYSTEM-USERNAME         PG-USERNAME
 scrapedev       ben                     scrape
