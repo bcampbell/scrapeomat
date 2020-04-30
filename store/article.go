@@ -45,6 +45,7 @@ type Article struct {
 	// Published contains date of publication.
 	// An ISO8601 string is used instead of time.Time, so that
 	// less-precise representations can be held (eg YYYY-MM)
+	// If no timezone is given, assume UTC.
 	Published   string      `json:"published,omitempty"`
 	Updated     string      `json:"updated,omitempty"`
 	Publication Publication `json:"publication,omitempty"`

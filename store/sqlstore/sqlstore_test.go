@@ -59,6 +59,24 @@ func performDBTests(t *testing.T, ss *SQLStore) {
 
 	//
 	checkArticles(t, ss, testArts)
+
+	// Very basic FetchSummary() check
+	mustDay := func(s string) time.Time {
+		t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
+		if err != nil {
+			panic("bad time: " + s)
+		}
+		return t
+	}
+	expectedCounts := []store.DatePubCount{
+		{mustDay("2019-04-01"), "example", 1},
+		{mustDay("2019-04-02"), "example", 1},
+	}
+	counts, err := ss.FetchSummary(&store.Filter{}, "published")
+	if !reflect.DeepEqual(expectedCounts, counts) {
+		fmt.Printf("BUGGER.\n")
+		t.Fatalf("FetchSummary: expected %v, got %v", expectedCounts, counts)
+	}
 }
 
 func checkArticles(t *testing.T, ss *SQLStore, testArts []*store.Article) {

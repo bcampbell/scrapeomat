@@ -496,6 +496,10 @@ func (ss *SQLStore) FetchPublications() ([]store.Publication, error) {
 }
 
 func (ss *SQLStore) FetchSummary(filt *store.Filter, group string) ([]store.DatePubCount, error) {
+	// TODO: FetchSummary() should probably take a timezone, in order to properly
+	// group by day... for now, days are UTC days!
+	tz := time.UTC
+
 	whereClause, params := buildWhere(filt)
 
 	var dayField string
@@ -508,15 +512,8 @@ func (ss *SQLStore) FetchSummary(filt *store.Filter, group string) ([]store.Date
 		return nil, fmt.Errorf("Bad group field (%s)", group)
 	}
 
-	if ss.driverName != "sqlite3" {
-		panic("TODO: postgresql")
-		//q := `SELECT CAST( ` + dayField + ` AS DATE) AS day, p.code, COUNT(*)
-		//    FROM (article a INNER JOIN publication p ON a.publication_id=p.id) ` +
-		//	whereClause + ` GROUP BY day, p.code ORDER BY day ASC ,p.code ASC;`
-	}
-
-	// sqlite3
-	q := `SELECT DATE(` + dayField + `) AS day, p.code, COUNT(*)
+	var q string
+	q = `SELECT DATE(` + dayField + `) AS day, p.code, COUNT(*)
 	    FROM (article a INNER JOIN publication p ON a.publication_id=p.id) ` +
 		whereClause + ` GROUP BY day, p.code ORDER BY day ASC ,p.code ASC;`
 
@@ -531,18 +528,29 @@ func (ss *SQLStore) FetchSummary(filt *store.Filter, group string) ([]store.Date
 	out := []store.DatePubCount{}
 	for rows.Next() {
 		foo := store.DatePubCount{}
-		var day sql.NullString
-		if err := rows.Scan(&day, &foo.PubCode, &foo.Count); err != nil {
-			return nil, err
-		}
+		if ss.driverName == "sqlite3" {
+			// TODO: sqlite3 driver can't seem to scan a DATE() to a time.Time (or sql.NullTime)
+			// TODO: INVESTIGATE!
+			// for now, workaround with string parsing.
+			var day sql.NullString
+			if err := rows.Scan(&day, &foo.PubCode, &foo.Count); err != nil {
+				return nil, err
+			}
 
-		// TODO: sqlite3 driver can't seem to scan a DATE() to a time.Time (or sql.NullTime)
-		// TODO: INVESTIGATE!
-		// for now, workaround with string parsing.
-		if day.Valid {
-			t, err := time.Parse("2006-01-02", day.String)
-			if err == nil {
-				foo.Date = t
+			if day.Valid {
+				t, err := time.ParseInLocation("2006-01-02", day.String, tz)
+				if err == nil {
+					foo.Date = t
+				}
+			}
+		} else {
+			// the non-sqlite3 version:
+			var day sql.NullTime
+			if err := rows.Scan(&day, &foo.PubCode, &foo.Count); err != nil {
+				return nil, err
+			}
+			if day.Valid {
+				foo.Date = day.Time.In(tz)
 			}
 		}
 		//ss.DebugLog.Printf("summary: %v\n", foo)
