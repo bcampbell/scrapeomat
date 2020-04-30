@@ -67,15 +67,15 @@ func NewFromDB(driver string, db *sql.DB) (*SQLStore, error) {
 
 	// our assumed location for publication dates, when no timezone given
 	// TODO: this is the wrong place for it. Scraper should handle this on a per-publication basis
-	loc, err := time.LoadLocation("Europe/London")
-	if err != nil {
-		return nil, err
-	}
+	//	loc, err := time.LoadLocation("Europe/London")
+	//	if err != nil {
+	//		return nil, err
+	//	}
 
 	ss := SQLStore{
 		db:         db,
 		driverName: driver,
-		loc:        loc,
+		loc:        time.UTC,
 		ErrLog:     nullLogger{}, // TODO: should log to stderr by default?
 		DebugLog:   nullLogger{},
 	}
