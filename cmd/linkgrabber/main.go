@@ -11,6 +11,11 @@ import (
 	"os"
 )
 
+type Opts struct {
+	LinkSel string
+	//	Verbose bool
+}
+
 func main() {
 	flag.Usage = func() {
 
@@ -29,6 +34,10 @@ is just fine.
 		flag.PrintDefaults()
 	}
 
+	opts := Opts{}
+
+	flag.StringVar(&opts.LinkSel, "s", "a", "css selector to find links to output")
+	//	flag.BoolVar(&opts.Verbose, "v", false, "output extra info (on stderr)")
 	flag.Parse()
 
 	var err error
@@ -38,7 +47,7 @@ is just fine.
 		os.Exit(1)
 	}
 
-	err = doit(flag.Args())
+	err = doit(flag.Args(), &opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
@@ -67,8 +76,13 @@ func expandURLs(origURLs []string) ([]string, error) {
 	return cooked, nil
 }
 
-func doit(urls []string) error {
-	urls, err := expandURLs(urls)
+func doit(urls []string, opts *Opts) error {
+	linkSel, err := cascadia.Compile(opts.LinkSel)
+	if err != nil {
+		return fmt.Errorf("Bad link selector: %s", err)
+	}
+
+	urls, err = expandURLs(urls)
 	if err != nil {
 		return err
 	}
@@ -78,7 +92,7 @@ func doit(urls []string) error {
 	}
 
 	for _, u := range urls {
-		err := doPage(client, u)
+		err := doPage(client, u, linkSel)
 		if err != nil {
 			return err
 		}
@@ -87,8 +101,7 @@ func doit(urls []string) error {
 	return nil
 }
 
-func doPage(client *http.Client, pageURL string) error {
-	linkSel := cascadia.MustCompile("a")
+func doPage(client *http.Client, pageURL string, linkSel cascadia.Selector) error {
 
 	root, err := fetchAndParse(client, pageURL)
 	if err != nil {
@@ -114,7 +127,8 @@ func fetchAndParse(client *http.Client, u string) (*html.Node, error) {
 	// Seems like a reasonable thing to send anyway...
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-	fmt.Fprintf(os.Stderr, "fetch %s\n", u)
+	// TODO: verbose flag!!!
+	// fmt.Fprintf(os.Stderr, "fetch %s\n", u)
 
 	resp, err := client.Do(req)
 	if err != nil {
