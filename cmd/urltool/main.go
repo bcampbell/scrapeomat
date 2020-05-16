@@ -7,11 +7,12 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 )
 
 type Options struct {
-	cutFragment bool
-	cutQuery    bool
+	cutParts string
+	site     bool
 }
 
 func main() {
@@ -21,8 +22,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s [OPTIONS] FILES(s)...\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, `
 
-Performs operations on URLs read from FILES(s).
+Tool to manipulate URL strings.
+URLs are read from read from FILES(s) ('-' to read from stdin).
 Writes the resulting URLs to stdout.
+
+can filter out:
+s  scheme
+u  username/password
+h  hostname (&port)
+p  path
+q  query
+f  fragment
 
 options:
 `)
@@ -31,9 +41,16 @@ options:
 
 	opts := Options{}
 
-	flag.BoolVar(&opts.cutFragment, "f", false, "remove fragments http://example.com/#wibble -> http://example.com/")
-	flag.BoolVar(&opts.cutQuery, "q", false, "remove query http://example.com/?id=1&page=2 -> http://example.com/")
+	flag.StringVar(&opts.cutParts, "c", "", "remove the specified parts (any of 'suhpqf')")
+	flag.BoolVar(&opts.site, "s", false, "just the site url (equivalent to -c pqf) eg http://example.com/foo/bar?id=20#wibble -> http://example.com")
 	flag.Parse()
+
+	if opts.site {
+		if opts.cutParts != "" {
+			fmt.Fprintf(os.Stderr, "ERROR: -c and -s are mutually exclusive")
+		}
+		opts.cutParts = "pqf" // cut off path, query and fragment
+	}
 
 	var err error
 	if flag.NArg() < 1 {
@@ -81,12 +98,8 @@ func doFile(filename string, opts *Options) error {
 		if err != nil {
 			return err
 		}
-		if opts.cutFragment {
-			u.Fragment = ""
-		}
-		if opts.cutQuery {
-			u.RawQuery = ""
-		}
+
+		zeroParts(u, opts.cutParts)
 		fmt.Println(u.String())
 	}
 	if err := scanner.Err(); err != nil {
@@ -94,4 +107,28 @@ func doFile(filename string, opts *Options) error {
 	}
 
 	return nil
+}
+
+func zeroParts(u *url.URL, parts string) {
+
+	if strings.Contains(parts, "s") {
+		u.Scheme = ""
+	}
+	if strings.Contains(parts, "u") {
+		u.User = nil
+	}
+	if strings.Contains(parts, "h") {
+		u.Host = ""
+	}
+	if strings.Contains(parts, "p") {
+		u.Path = ""
+		u.RawPath = ""
+	}
+	if strings.Contains(parts, "q") {
+		u.RawQuery = ""
+		u.ForceQuery = false
+	}
+	if strings.Contains(parts, "f") {
+		u.Fragment = ""
+	}
 }
