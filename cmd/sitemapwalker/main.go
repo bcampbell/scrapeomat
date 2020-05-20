@@ -153,15 +153,14 @@ func doit(client *http.Client, u string) error {
 		}
 	} else {
 		resp, err := client.Get(u)
+		if err != nil {
+			stats.fetchErrs++
+			return fmt.Errorf("fetch failed: %s", err)
+		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			stats.fetchErrs++
 			return fmt.Errorf("http error %d", resp.StatusCode)
-		}
-
-		if err != nil {
-			stats.fetchErrs++
-			return fmt.Errorf("fetch failed: %s", err)
 		}
 		in = resp.Body
 	}
