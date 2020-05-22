@@ -3,6 +3,7 @@ package store
 import (
 	// TODO: KILLKILLKILL
 	"github.com/bcampbell/arts/arts"
+	"strings"
 )
 
 type Author struct {
@@ -84,5 +85,16 @@ func ConvertArticle(src *arts.Article) *Article {
 	for i, kw := range src.Keywords {
 		art.Keywords[i] = Keyword{Name: kw.Name, URL: kw.URL}
 	}
+
+	// sort out a decent pubcode
+	if art.Publication.Code == "" {
+		code := strings.ToLower(strings.Join(strings.Fields(art.Publication.Name), ""))
+		if code != "" {
+			art.Publication.Code = code
+		} else {
+			art.Publication.Code = art.Publication.Domain
+		}
+	}
+
 	return art
 }
