@@ -5,10 +5,29 @@
   <tr><th>Headline</th><td>{{.Headline}}</td></tr>
   <tr><th>CanonicalURL</th><td><a href="{{.CanonicalURL}}">{{.CanonicalURL}}</a></td></tr>
   <tr><th>URLs</th><td>{{range .URLs}}<a href="{{.}}">{{.}}</a></br>{{end}}</td></tr>
-  <tr><th>Publication</th><td>{{.Publication}}</td></tr>
+  <tr><th>Publication</th><td>
+    code: {{.Publication.Code}}<br/>
+    name: {{.Publication.Name}}<br/>
+    domain: {{.Publication.Domain}}
+    </td></tr>
   <tr><th>Published</th><td>{{.Published}}</td></tr>
   <tr><th>Updated</th><td>{{.Updated}}</td></tr>
   <tr><th>Content</th><td>{{.Content}}</td></tr>
+  <tr><th>Section</th><td>{{.Section}}</td></tr>
+  <tr><th>Keywords</th><td>
+      <ul>
+        {{range .Keywords}}
+        <li>{{.Name}}</li>
+        {{end}}
+      </ul>
+  </td></tr>
+  <tr><th>Authors</th><td>
+      <ul>
+        {{range .Authors}}
+        <li>{{.Name}}</li>
+        {{end}}
+      </ul>
+  </td></tr>
 </table>
 {{end}}
 {{end}}
