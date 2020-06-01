@@ -9,6 +9,8 @@ import (
 	"github.com/bcampbell/scrapeomat/store"
 )
 
+// TODO: break all these tests into individual functions.
+
 func performDBTests(t *testing.T, ss *SQLStore) {
 
 	testArts := []*store.Article{
@@ -76,6 +78,19 @@ func performDBTests(t *testing.T, ss *SQLStore) {
 	if !reflect.DeepEqual(expectedCounts, counts) {
 		fmt.Printf("BUGGER.\n")
 		t.Fatalf("FetchSummary: expected %v, got %v", expectedCounts, counts)
+	}
+
+	// Check FetchCount runs with a non-null filter
+	cnt, err := ss.FetchCount(&store.Filter{
+		PubFrom: mustDay("1821-01-01"),
+		PubTo:   mustDay("2050-01-01"),
+	})
+	if err != nil {
+		t.Fatalf("FetchCount fail: %s", err)
+	}
+	if cnt != len(testArts) {
+		t.Fatalf("FetchCount wrong (got %d, expected %d)",
+			cnt, len(testArts))
 	}
 }
 

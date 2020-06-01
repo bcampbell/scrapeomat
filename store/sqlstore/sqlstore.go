@@ -300,7 +300,9 @@ func (ss *SQLStore) FetchCount(filt *store.Filter) (int, error) {
            FROM (article a INNER JOIN publication p ON a.publication_id=p.id)
            ` + whereClause
 	var cnt int
-	err := ss.db.QueryRow(q, params...).Scan(&cnt)
+	//ss.DebugLog.Printf("fetchcount: %s\n", q)
+	//ss.DebugLog.Printf("fetchcount params: %+v\n", params)
+	err := ss.db.QueryRow(ss.rebind(q), params...).Scan(&cnt)
 	return cnt, err
 }
 
