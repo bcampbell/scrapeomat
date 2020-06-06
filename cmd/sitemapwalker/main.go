@@ -17,11 +17,11 @@ var opts struct {
 	nonrecursive bool
 	verbose      bool
 
-	fromDate    string
-	toDate      string
-	filterIndex bool
-	from        time.Time
-	to          time.Time
+	fromDate      string
+	toDate        string
+	filterSitemap bool
+	from          time.Time
+	to            time.Time
 }
 
 type sitemapfile struct {
@@ -48,7 +48,9 @@ func usage() {
 
 	fmt.Fprintf(os.Stderr, `Usage: %s [OPTIONS] [URL] ...
 Find pages by scanning sitemap files, starting at the url(s) given.
-Filter against page LastMod times using -to and -from.
+-to and/or -from can be use to give an (inclusive) range.
+<url> lastmod entries are rejected if they are outside that range.
+<sitemap> lastmod entries are checked against the range only if -s flag is used.
 
 Options:
 `, os.Args[0])
@@ -74,7 +76,7 @@ func main() {
 	flag.Usage = usage
 	flag.StringVar(&opts.fromDate, "from", "", "ignore links with LastMod before YYYY-MM-DD date")
 	flag.StringVar(&opts.toDate, "to", "", "ignore links with LastMod after YYYY-MM-DD date")
-	flag.BoolVar(&opts.filterIndex, "f", false, "apply date filter to index file link too?")
+	flag.BoolVar(&opts.filterSitemap, "s", false, "apply date filter to <sitemap> lastmod too?")
 	flag.BoolVar(&opts.nonrecursive, "n", false, "non-recursive (don't follow <sitemap> links)")
 	flag.BoolVar(&opts.verbose, "v", false, "verbose")
 	flag.Parse()
@@ -180,11 +182,14 @@ func doit(client *http.Client, u string) error {
 			var t time.Time
 			t, err = parseLastMod(art.LastMod)
 			if err == nil {
+				//fmt.Fprintf(os.Stderr, "Parsed '%s' -> %v (from: %v to: %v)\n", art.LastMod, t, opts.from, opts.to)
 				if !opts.from.IsZero() && t.Before(opts.from) {
+					//fmt.Fprintf(os.Stderr, "Reject '%s' (too early)\n", art.LastMod)
 					accept = false // too early
 				}
 				if !opts.to.IsZero() && (t.Equal(opts.to) || t.After(opts.to)) {
 					accept = false // too late
+					//fmt.Fprintf(os.Stderr, "Reject '%s' (too late)\n", art.LastMod)
 				}
 			} else {
 				fmt.Fprintf(os.Stderr, "WARN: bad LastMod (%s) in %s (rejecting)\n", art.LastMod, u)
@@ -208,7 +213,7 @@ func doit(client *http.Client, u string) error {
 			//fmt.Println(foo.Loc)
 		} else {
 			accept := true
-			if (opts.filterIndex && !opts.from.IsZero() || !opts.to.IsZero()) && foo.LastMod != "" {
+			if opts.filterSitemap && (!opts.from.IsZero() || !opts.to.IsZero()) && foo.LastMod != "" {
 				var t time.Time
 				t, err = parseLastMod(foo.LastMod)
 				if err == nil {
@@ -219,7 +224,7 @@ func doit(client *http.Client, u string) error {
 						accept = false // too late
 					}
 				} else {
-					fmt.Fprintf(os.Stderr, "WARN: bad index LastMod (%s) in %s (rejecting)\n", foo.LastMod, u)
+					fmt.Fprintf(os.Stderr, "WARN: bad LastMod in <sitemap> (%s) in %s (rejecting)\n", foo.LastMod, u)
 					accept = false
 				}
 
@@ -231,6 +236,9 @@ func doit(client *http.Client, u string) error {
 					return err
 				}
 			} else {
+				if opts.verbose {
+					fmt.Fprintf(os.Stderr, "skipping <sitemap> %s (lastmod=%s)\n", foo.Loc, foo.LastMod)
+				}
 				stats.fetchRejected++
 			}
 		}
