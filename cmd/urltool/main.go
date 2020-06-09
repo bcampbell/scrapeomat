@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/PuerkitoBio/purell"
 	"io"
 	"net/url"
 	"os"
@@ -23,7 +24,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, `
 
 Tool to manipulate URL strings.
-URLs are read from read from FILES(s) ('-' to read from stdin).
+URLs are read from read from stdin or FILES(s) (if specified).
 Writes the resulting URLs to stdout.
 
 can filter out:
@@ -52,42 +53,37 @@ options:
 		opts.cutParts = "pqf" // cut off path, query and fragment
 	}
 
-	var err error
-	if flag.NArg() < 1 {
-		fmt.Fprintf(os.Stderr, "ERROR: missing input files(s)\n")
-		flag.Usage()
-		os.Exit(1)
+	infiles := []string{}
+	if flag.NArg() == 0 {
+		// default to stdin if no input files
+		infiles = append(infiles, "-")
+	} else {
+		infiles = append(infiles, flag.Args()...)
 	}
 
-	err = doit(&opts, flag.Args())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
-		os.Exit(1)
+	for _, infile := range infiles {
+		err := doFile(infile, &opts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+			os.Exit(1)
+		}
 	}
 
 	os.Exit(0)
 }
 
-func doit(opts *Options, filenames []string) error {
-	for _, filename := range filenames {
-		err := doFile(filename, opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func doFile(filename string, opts *Options) error {
 
-	var infile io.Reader = os.Stdin
-	if filename != "-" {
-		infile, err := os.Open(filename)
+	var infile io.Reader
+	if filename == "-" {
+		infile = os.Stdin
+	} else {
+		f, err := os.Open(filename)
 		if err != nil {
 			return err
 		}
-		defer infile.Close()
+		infile = f
+		defer f.Close()
 	}
 
 	scanner := bufio.NewScanner(infile)
@@ -100,6 +96,10 @@ func doFile(filename string, opts *Options) error {
 		}
 
 		zeroParts(u, opts.cutParts)
+
+		// Apply safe normalisations
+		purell.NormalizeURL(u, purell.FlagsSafe)
+
 		fmt.Println(u.String())
 	}
 	if err := scanner.Err(); err != nil {
