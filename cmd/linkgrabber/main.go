@@ -11,9 +11,10 @@ import (
 	"os"
 )
 
-type Opts struct {
-	LinkSel string
-	//	Verbose bool
+var opts struct {
+	linkSel   string
+	followSel string
+	verbose   bool
 }
 
 func main() {
@@ -34,10 +35,9 @@ is just fine.
 		flag.PrintDefaults()
 	}
 
-	opts := Opts{}
-
-	flag.StringVar(&opts.LinkSel, "s", "a", "css selector to find links to output")
-	//	flag.BoolVar(&opts.Verbose, "v", false, "output extra info (on stderr)")
+	flag.StringVar(&opts.linkSel, "l", "a", "css selector to find links to output")
+	flag.StringVar(&opts.followSel, "f", "", "css selector of links to follow")
+	flag.BoolVar(&opts.verbose, "v", false, "output extra info (on stderr)")
 	flag.Parse()
 
 	var err error
@@ -47,7 +47,7 @@ is just fine.
 		os.Exit(1)
 	}
 
-	err = doit(flag.Args(), &opts)
+	err = doit(flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
@@ -76,10 +76,18 @@ func expandURLs(origURLs []string) ([]string, error) {
 	return cooked, nil
 }
 
-func doit(urls []string, opts *Opts) error {
-	linkSel, err := cascadia.Compile(opts.LinkSel)
+func doit(urls []string) error {
+	linkSel, err := cascadia.Compile(opts.linkSel)
 	if err != nil {
 		return fmt.Errorf("Bad link selector: %s", err)
+	}
+
+	var followSel cascadia.Selector = nil
+	if opts.followSel != "" {
+		followSel, err = cascadia.Compile(opts.followSel)
+		if err != nil {
+			return fmt.Errorf("Bad follow selector: %s", err)
+		}
 	}
 
 	urls, err = expandURLs(urls)
@@ -91,31 +99,72 @@ func doit(urls []string, opts *Opts) error {
 		Transport: util.NewPoliteTripper(),
 	}
 
+	queued := map[string]struct{}{}
+	visited := map[string]struct{}{}
+
 	for _, u := range urls {
-		err := doPage(client, u, linkSel)
-		if err != nil {
-			return err
+		queued[u] = struct{}{}
+	}
+
+	errCnt := 0
+	// while we have urls queued to scrape...
+	for len(queued) > 0 {
+		for u, _ := range queued {
+			found, follow, err := doPage(client, u, linkSel, followSel)
+
+			// shift url into visited set
+			visited[u] = struct{}{}
+			delete(queued, u)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "FAILED: %s (%s)\n", u, err)
+				errCnt++
+				if errCnt > 10 {
+					return fmt.Errorf("Too many errors.")
+				}
+				continue
+			}
+			if opts.verbose {
+				fmt.Fprintf(os.Stderr, "%s (%d,%d)\n", u, len(found), len(follow))
+			}
+
+			// output any found links
+			for _, l := range found {
+				fmt.Println(l)
+			}
+
+			// queue up any links we want to follow
+			for _, l := range follow {
+				_, got := visited[l]
+				if !got {
+					queued[l] = struct{}{}
+				}
+			}
 		}
 	}
 
 	return nil
 }
 
-func doPage(client *http.Client, pageURL string, linkSel cascadia.Selector) error {
+func doPage(client *http.Client, pageURL string, linkSel cascadia.Selector, followSel cascadia.Selector) ([]string, []string, error) {
 
 	root, err := fetchAndParse(client, pageURL)
 	if err != nil {
-		return fmt.Errorf("%s failed: %s\n", pageURL, err)
+		return []string{}, []string{}, err
 	}
-	links, err := grabLinks(root, linkSel, pageURL)
+	found, err := grabLinks(root, linkSel, pageURL)
 	if err != nil {
-		return fmt.Errorf("%s error: %s\n", pageURL, err)
-	}
-	for _, l := range links {
-		fmt.Println(l)
+		return []string{}, []string{}, err
 	}
 
-	return nil
+	follow := []string{}
+	if followSel != nil {
+		follow, err = grabLinks(root, followSel, pageURL)
+		if err != nil {
+			return []string{}, []string{}, err
+		}
+	}
+
+	return found, follow, nil
 }
 
 func fetchAndParse(client *http.Client, u string) (*html.Node, error) {
