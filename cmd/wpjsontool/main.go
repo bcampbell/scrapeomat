@@ -5,11 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"github.com/bcampbell/arts/util" // for politetripper
-	"io/ioutil"
+	htmlesc "html"                   // not to be confused with golang/x/net/html
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,6 +20,9 @@ type Options struct {
 	dayFrom, dayTo string
 	outputFormat   string // "json", "json-stream"
 }
+
+// should be in Options, but want it global for wp.go for now.
+var verbose bool
 
 // parseDays converts the date range options into time.Time.
 // A missing date is returned as a zero time.
@@ -69,6 +72,7 @@ func main() {
 	flag.StringVar(&opts.dayFrom, "from", "", "from date (YYYY-MM-DD)")
 	flag.StringVar(&opts.dayTo, "to", "", "to date (YYYY-MM-DD)")
 	flag.StringVar(&opts.outputFormat, "f", "json-stream", "output format: json, json-stream")
+	flag.BoolVar(&verbose, "v", false, "verbose")
 	flag.Parse()
 
 	var err error
@@ -86,19 +90,6 @@ func main() {
 	}
 
 	os.Exit(0)
-}
-
-// Post data returned from wp/posts endpoint
-type Post struct {
-	Link  string `json:"link"`
-	Title struct {
-		Rendered string `json:"rendered"`
-	} `json:"title"`
-	Date     string `json:"date"`
-	Modified string `json:"modified"`
-	Content  struct {
-		Rendered string `json:"rendered"`
-	} `json:"content"`
 }
 
 // Our output data format.
@@ -119,12 +110,17 @@ type Article struct {
 	Published string `json:"published,omitempty"`
 	Updated   string `json:"updated,omitempty"`
 	//Publication Publication `json:"publication,omitempty"`
-	//Keywords    []Keyword   `json:"keywords,omitempty"`
-	//Section     string      `json:"section,omitempty"`
+	Keywords []Keyword `json:"keywords,omitempty"`
+	Section  string    `json:"section,omitempty"`
 	// space for extra, free-form data
 	//	Extra interface{} `json:"extra,omitempty"`
 	// Ha! not free-form any more! (bugfix for annoying int/float json issue)
 	//Extra *TweetExtra `json:"extra,omitempty"`
+}
+
+type Keyword struct {
+	Name string `json:"name"`
+	URL  string `json:"url,omitempty"`
 }
 
 func run(apiURL string, opts *Options) error {
@@ -132,10 +128,11 @@ func run(apiURL string, opts *Options) error {
 		Transport: util.NewPoliteTripper(),
 	}
 
-	baseURL, err := url.Parse(apiURL)
-	if err != nil {
-		return err
-	}
+	/*	baseURL, err := url.Parse(apiURL)
+		if err != nil {
+			return err
+		}
+	*/
 
 	dayFrom, dayTo, err := opts.parseDays()
 	if err != nil {
@@ -152,46 +149,20 @@ func run(apiURL string, opts *Options) error {
 	enc.SetIndent("", "  ")
 	numReceived := 0
 	numOutput := 0 // in case some are skipped
+
+	filt := &PostsFilter{
+		PerPage: 100,
+		Offset:  0,
+	}
+	if !dayFrom.IsZero() {
+		filt.After = dayFrom.Add(-1 * time.Second).Format("2006-01-02T15:04:05")
+	}
+	if !dayTo.IsZero() {
+		filt.Before = dayTo.Add(24 * time.Hour).Format("2006-01-02T15:04:05")
+	}
+
 	for {
-		params := url.Values{}
-		params.Set("offset", strconv.Itoa(numReceived))
-
-		params.Set("per_page", "100")
-
-		if !dayFrom.IsZero() {
-			params.Set("after", dayFrom.Add(-1*time.Second).Format("2006-01-02T15:04:05"))
-		}
-		if !dayTo.IsZero() {
-			params.Set("before", dayTo.Add(24*time.Hour).Format("2006-01-02T15:04:05"))
-		}
-
-		u := apiURL + "/wp/v2/posts?" + params.Encode()
-
-		fmt.Fprintf(os.Stderr, "fetch %s\n", u)
-
-		resp, err := client.Get(u)
-		if err != nil {
-			return err
-		}
-
-		// totalpages is returned as a header
-		// (There's also X-WP-TotalPages)
-		expectedTotal, err := strconv.Atoi(resp.Header.Get("X-WP-Total"))
-		if err != nil {
-			return err
-		}
-		raw, err := ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != 200 {
-			return fmt.Errorf("%s: %d\n", u, resp.StatusCode)
-		}
-
-		posts := []Post{}
-
-		err = json.Unmarshal(raw, &posts)
+		expectedTotal, posts, err := FetchPosts(client, apiURL, filt)
 		if err != nil {
 			return err
 		}
@@ -202,7 +173,7 @@ func run(apiURL string, opts *Options) error {
 
 		for _, p := range posts {
 			numReceived++
-			art, err := convertPost(baseURL, &p)
+			art, err := convertPost(client, apiURL, &p)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "WARN: Bad post - %s", err)
 				continue
@@ -227,6 +198,8 @@ func run(apiURL string, opts *Options) error {
 		if numReceived >= expectedTotal {
 			break
 		}
+		// ready for next batch
+		filt.Offset += len(posts)
 	}
 	if opts.outputFormat == "json" {
 		// terminate our fake js array
@@ -241,14 +214,21 @@ func parseISO8601(raw string) (time.Time, error) {
 	return t, err
 }
 
-func convertPost(baseURL *url.URL, p *Post) (*Article, error) {
+var tagCache = map[int]*Tag{}
+var categoryCache = map[int]*Category{}
+
+func convertPost(client *http.Client, apiURL string, p *Post) (*Article, error) {
+	baseURL, err := url.Parse(apiURL)
+	if err != nil {
+		return nil, err
+	}
+
 	art := &Article{}
 	url, err := baseURL.Parse(p.Link)
 	if err != nil {
 		return nil, err
 	}
 	art.CanonicalURL = url.String()
-	// TODO: should sanitise HTML!
 
 	contentHTML, err := SanitiseHTMLString(p.Content.Rendered)
 	if err != nil {
@@ -260,11 +240,44 @@ func convertPost(baseURL *url.URL, p *Post) (*Article, error) {
 	if err != nil {
 		return nil, err // TODO: should be warning?
 	}
-	art.Headline = SingleLine(titleText)
+	art.Headline = SingleLine(htmlesc.UnescapeString(titleText))
 
 	// TODO: should sanitise dates
 	art.Published = p.Date
 	art.Updated = p.Modified
+	// Resolve tags
+	for _, tagID := range p.Tags {
+		tag, ok := tagCache[tagID]
+		if !ok {
+			// Need to call the API
+			tag, err = FetchTag(client, apiURL, tagID)
+			if err != nil {
+				return nil, err
+			}
+			tagCache[tagID] = tag
+		}
 
+		kw := Keyword{
+			Name: htmlesc.UnescapeString(tag.Name),
+			URL:  tag.Link,
+		}
+		art.Keywords = append(art.Keywords, kw)
+	}
+
+	// Resolve categories
+	catNames := []string{}
+	for _, catID := range p.Categories {
+		cat, ok := categoryCache[catID]
+		if !ok {
+			// Need to call the API
+			cat, err = FetchCategory(client, apiURL, catID)
+			if err != nil {
+				return nil, err
+			}
+			categoryCache[catID] = cat
+		}
+		catNames = append(catNames, htmlesc.UnescapeString(cat.Name))
+	}
+	art.Section += strings.Join(catNames, ", ")
 	return art, nil
 }

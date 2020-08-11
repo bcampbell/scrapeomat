@@ -21,10 +21,12 @@ func SanitiseHTMLString(h string) (string, error) {
 
 	var b strings.Builder
 	for _, n := range nodes {
-		TidyNode(n)
-		err = html.Render(&b, n)
-		if err != nil {
-			return "", err
+		keep := TidyNode(n)
+		if keep {
+			err = html.Render(&b, n)
+			if err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -156,18 +158,14 @@ func getAttr(n *html.Node, attr string) string {
 }
 
 // Tidy up extracted content into something that'll produce reasonable html when
-// rendered
+// rendered. Returns true if node should be kept. false to cull.
 // - remove comments
 // - trim empty text nodes
 // - TODO make links absolute
-func TidyNode(n *html.Node) {
+func TidyNode(n *html.Node) bool {
 
-	// kill comments
 	if n.Type == html.CommentNode {
-		if n.Parent != nil {
-			n.Parent.RemoveChild(n)
-			return
-		}
+		return false // cull comments
 	}
 
 	// trim excessive leading/trailing space in text nodes, and cull empty ones
@@ -189,9 +187,8 @@ func TidyNode(n *html.Node) {
 			}
 		})
 		txt = strings.TrimSpace(txt)
-		if len(txt) == 0 && n.Parent != nil {
-			n.Parent.RemoveChild(n)
-			return
+		if len(txt) == 0 {
+			return false // cull empty text
 		} else {
 			n.Data = txt
 		}
@@ -201,10 +198,7 @@ func TidyNode(n *html.Node) {
 	if n.Type == html.ElementNode {
 		allowedAttrs, whiteListed := elementWhitelist[n.DataAtom]
 		if !whiteListed {
-			if n.Parent != nil {
-				n.Parent.RemoveChild(n)
-			}
-			return
+			return false // cull non-whitelist element
 		}
 
 		// remove attrs not on whitelist
@@ -222,9 +216,8 @@ func TidyNode(n *html.Node) {
 		if n.DataAtom == atom.Img {
 			const maxSrcURI = 1024
 			src := getAttr(n, "src")
-			if len(src) > maxSrcURI && n.Parent != nil {
-				n.Parent.RemoveChild(n)
-				return
+			if len(src) > maxSrcURI {
+				return false // cull: URI too big
 			}
 		}
 	}
@@ -234,6 +227,11 @@ func TidyNode(n *html.Node) {
 		c := child
 		// fetch next one in advance (because current one be removed)
 		child = child.NextSibling
-		TidyNode(c)
+		keep := TidyNode(c)
+		if !keep {
+			n.RemoveChild(c)
+		}
 	}
+
+	return true
 }
