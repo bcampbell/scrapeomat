@@ -12,32 +12,25 @@ import (
 	"github.com/bcampbell/scrapeomat/store"
 )
 
+// Importer imports article data from JSON files into a scrapeomat store.
 type Importer struct {
-	db   store.Store
-	arts []*store.Article
+	DB             store.Store
+	UpdateExisting bool // if true, update existing articles in db (else skip)
+
+	arts []*store.Article // currently unflushed articles
 }
 
 const BATCHSIZE = 500
 
 func NewImporter(db store.Store) *Importer {
 	return &Importer{
-		db:   db,
-		arts: nil,
+		DB:             db,
+		UpdateExisting: false,
+		arts:           nil,
 	}
 }
 
-func (imp *Importer) Import(jsonFiles ...string) error {
-	for _, jsonFile := range jsonFiles {
-		err := imp.doFile(jsonFile)
-		if err != nil {
-			return err
-		}
-	}
-	// add any leftover articles
-	return imp.flush()
-}
-
-func (imp *Importer) doFile(jsonFile string) error {
+func (imp *Importer) ImportJSONFile(jsonFile string) error {
 	fp, err := os.Open(jsonFile)
 	if err != nil {
 		return err
@@ -69,14 +62,14 @@ func (imp *Importer) doFile(jsonFile string) error {
 		}
 	}
 
-	return nil
+	return imp.flush()
 }
 
 func (imp *Importer) flush() error {
 	if len(imp.arts) == 0 {
 		return nil
 	}
-	err := FancyStash(imp.db, imp.arts...)
+	err := FancyStash(imp.DB, imp.UpdateExisting, imp.arts...)
 	if err != nil {
 		return err
 	}
@@ -100,9 +93,10 @@ func SanityCheckArticle(art *store.Article) error {
 
 // Stash articles.
 // This should be in core store interface?
-func FancyStash(db store.Store, arts ...*store.Article) error {
-	newArts := []*store.Article{}
-	existingArts := []*store.Article{}
+func FancyStash(db store.Store, updateExisting bool, arts ...*store.Article) error {
+	stashArts := []*store.Article{}
+	updateArts := []*store.Article{} // contains subset of stashArts
+	skipArts := []*store.Article{}
 	badArts := []*store.Article{}
 
 	for _, art := range arts {
@@ -121,16 +115,21 @@ func FancyStash(db store.Store, arts ...*store.Article) error {
 		ids, err := db.FindURLs(urls)
 		if len(ids) == 0 {
 			// not in DB - it's new.
-			newArts = append(newArts, art)
+			stashArts = append(stashArts, art)
 			continue
 		}
 		if len(ids) == 1 {
 			// Already got this one.
-			// TODO: should handle merging URLs and whatnot...
-			// but for now we'll just skip.
-			//art.ID = ids[0]
-			existingArts = append(existingArts, art)
-			continue
+			art.ID = ids[0]
+			if updateExisting {
+				// add to both stash and update lists
+				stashArts = append(stashArts, art)
+				updateArts = append(updateArts, art)
+			} else {
+				// skip it.
+				skipArts = append(skipArts, art)
+				continue
+			}
 		}
 		if len(ids) > 1 {
 			// Uhoh...
@@ -141,11 +140,11 @@ func FancyStash(db store.Store, arts ...*store.Article) error {
 	}
 
 	// stash the new articles
-	_, err := db.Stash(newArts...)
+	_, err := db.Stash(stashArts...)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "%d new, %d already had, %d bad\n", len(newArts), len(existingArts), len(badArts))
+	fmt.Fprintf(os.Stderr, "%d stashed (%d updated), %d skipped, %d bad\n", len(stashArts), len(updateArts), len(skipArts), len(badArts))
 
 	return nil
 }

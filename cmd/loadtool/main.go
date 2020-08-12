@@ -39,6 +39,7 @@ var opts struct {
 	ignoreLoadErrors bool
 	htmlEscape       bool
 	recursive        bool
+	forceUpdate      bool
 }
 
 const usageTxt = `usage: loadtool [options] [file(s)]>
@@ -59,6 +60,7 @@ func main() {
 	flag.BoolVar(&opts.recursive, "r", false, "Recursive - descend into dirs to find json files.")
 	flag.StringVar(&opts.connStr, "db", "", "database connection string (or set SCRAPEOMAT_DB")
 	flag.StringVar(&opts.driver, "driver", "", "database driver name (defaults to sqlite3 if SCRAPEOMAT_DRIVER is unset)")
+	flag.BoolVar(&opts.forceUpdate, "f", false, "force update of articles already in db")
 	flag.StringVar(&opts.pubCode, "pubcode", "", "publication shortcode (if not in article data)")
 	flag.BoolVar(&opts.htmlEscape, "e", false, "HTML-escape plain text content field")
 	flag.Parse()
@@ -74,19 +76,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	/*
-		// dump out for debugging
-		for _, f := range jsonFiles {
-			art, err := readArt(f)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Printf("%+v\n", art)
-		}
-		return
-	*/
-
 	db, err := sqlstore.NewWithEnv(opts.driver, opts.connStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR opening db: %s\n", err)
@@ -95,10 +84,14 @@ func main() {
 	defer db.Close()
 
 	imp := NewImporter(db)
-	err = imp.Import(jsonFiles...)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
-		os.Exit(1)
+	imp.UpdateExisting = opts.forceUpdate
+
+	for _, jsonFile := range jsonFiles {
+		err := imp.ImportJSONFile(jsonFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+			os.Exit(1)
+		}
 	}
 
 }
