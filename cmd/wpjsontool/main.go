@@ -19,10 +19,8 @@ import (
 type Options struct {
 	dayFrom, dayTo string
 	outputFormat   string // "json", "json-stream"
+	verbose        bool
 }
-
-// should be in Options, but want it global for wp.go for now.
-var verbose bool
 
 // parseDays converts the date range options into time.Time.
 // A missing date is returned as a zero time.
@@ -72,7 +70,7 @@ func main() {
 	flag.StringVar(&opts.dayFrom, "from", "", "from date (YYYY-MM-DD)")
 	flag.StringVar(&opts.dayTo, "to", "", "to date (YYYY-MM-DD)")
 	flag.StringVar(&opts.outputFormat, "f", "json-stream", "output format: json, json-stream")
-	flag.BoolVar(&verbose, "v", false, "verbose")
+	flag.BoolVar(&opts.verbose, "v", false, "verbose")
 	flag.Parse()
 
 	var err error
@@ -123,10 +121,47 @@ type Keyword struct {
 	URL  string `json:"url,omitempty"`
 }
 
+func grabTags(wp *Client) (map[int]*Tag, error) {
+
+	out := map[int]*Tag{}
+	params := url.Values{}
+	params.Set("hide_empty", "true")
+	tags, err := wp.ListTagsAll(params)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range tags {
+		out[t.ID] = t
+	}
+	return out, nil
+}
+
+func grabCategories(wp *Client) (map[int]*Category, error) {
+
+	out := map[int]*Category{}
+	params := url.Values{}
+	params.Set("hide_empty", "true")
+	categories, err := wp.ListCategoriesAll(params)
+	if err != nil {
+		return nil, err
+	}
+	for _, cat := range categories {
+		out[cat.ID] = cat
+	}
+	return out, nil
+}
+
 func run(apiURL string, opts *Options) error {
 	client := &http.Client{
 		Transport: util.NewPoliteTripper(),
 	}
+
+	wp := &Client{HTTPClient: client,
+		BaseURL: apiURL,
+		Verbose: opts.verbose}
+
+	tags, err := grabTags(wp)
+	categories, err := grabCategories(wp)
 
 	/*	baseURL, err := url.Parse(apiURL)
 		if err != nil {
@@ -141,39 +176,32 @@ func run(apiURL string, opts *Options) error {
 
 	out := os.Stdout
 
-	if opts.outputFormat == "json" {
-		fmt.Fprintf(out, "[\n")
-	}
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	numReceived := 0
 	numOutput := 0 // in case some are skipped
 
-	filt := &PostsFilter{
-		PerPage: 100,
-		Offset:  0,
-	}
+	params := url.Values{}
 	if !dayFrom.IsZero() {
-		filt.After = dayFrom.Add(-1 * time.Second).Format("2006-01-02T15:04:05")
+		params.Set("after", dayFrom.Add(-1*time.Second).Format("2006-01-02T15:04:05"))
 	}
 	if !dayTo.IsZero() {
-		filt.Before = dayTo.Add(24 * time.Hour).Format("2006-01-02T15:04:05")
+		params.Set("before", dayTo.Add(24*time.Hour).Format("2006-01-02T15:04:05"))
 	}
 
-	for {
-		expectedTotal, posts, err := FetchPosts(client, apiURL, filt)
-		if err != nil {
-			return err
-		}
-		if len(posts) == 0 {
-			fmt.Fprintf(os.Stderr, "done.\n")
-			break
-		}
+	if opts.outputFormat == "json" {
+		// Start a fake js array
+		fmt.Fprintf(out, "[\n")
+	}
 
-		for _, p := range posts {
-			numReceived++
-			art, err := convertPost(client, apiURL, &p)
+	baseURL, err := url.Parse(wp.BaseURL)
+	if err != nil {
+		return err
+	}
+
+	err = wp.ListPostsAll(params, func(batch []*Post, expectedTotal int) error {
+		for _, post := range batch {
+			art, err := convertPost(baseURL, post, tags, categories)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "WARN: Bad post - %s", err)
 				continue
@@ -194,12 +222,11 @@ func run(apiURL string, opts *Options) error {
 			numOutput++
 		}
 
-		fmt.Fprintf(os.Stderr, "received %d/%d\n", numReceived, expectedTotal)
-		if numReceived >= expectedTotal {
-			break
-		}
-		// ready for next batch
-		filt.Offset += len(posts)
+		return nil
+	})
+
+	if err != nil {
+		return err
 	}
 	if opts.outputFormat == "json" {
 		// terminate our fake js array
@@ -217,12 +244,7 @@ func parseISO8601(raw string) (time.Time, error) {
 var tagCache = map[int]*Tag{}
 var categoryCache = map[int]*Category{}
 
-func convertPost(client *http.Client, apiURL string, p *Post) (*Article, error) {
-	baseURL, err := url.Parse(apiURL)
-	if err != nil {
-		return nil, err
-	}
-
+func convertPost(baseURL *url.URL, p *Post, tags map[int]*Tag, categories map[int]*Category) (*Article, error) {
 	art := &Article{}
 	url, err := baseURL.Parse(p.Link)
 	if err != nil {
@@ -245,38 +267,27 @@ func convertPost(client *http.Client, apiURL string, p *Post) (*Article, error) 
 	// TODO: should sanitise dates
 	art.Published = p.Date
 	art.Updated = p.Modified
+
 	// Resolve tags
 	for _, tagID := range p.Tags {
-		tag, ok := tagCache[tagID]
-		if !ok {
-			// Need to call the API
-			tag, err = FetchTag(client, apiURL, tagID)
-			if err != nil {
-				return nil, err
-			}
-			tagCache[tagID] = tag
-		}
+		tag, ok := tags[tagID]
+		if ok {
 
-		kw := Keyword{
-			Name: htmlesc.UnescapeString(tag.Name),
-			URL:  tag.Link,
+			kw := Keyword{
+				Name: htmlesc.UnescapeString(tag.Name),
+				URL:  tag.Link,
+			}
+			art.Keywords = append(art.Keywords, kw)
 		}
-		art.Keywords = append(art.Keywords, kw)
 	}
 
 	// Resolve categories
 	catNames := []string{}
 	for _, catID := range p.Categories {
-		cat, ok := categoryCache[catID]
-		if !ok {
-			// Need to call the API
-			cat, err = FetchCategory(client, apiURL, catID)
-			if err != nil {
-				return nil, err
-			}
-			categoryCache[catID] = cat
+		cat, ok := categories[catID]
+		if ok {
+			catNames = append(catNames, htmlesc.UnescapeString(cat.Name))
 		}
-		catNames = append(catNames, htmlesc.UnescapeString(cat.Name))
 	}
 	art.Section += strings.Join(catNames, ", ")
 	return art, nil
