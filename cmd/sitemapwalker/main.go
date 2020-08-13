@@ -154,7 +154,14 @@ func doit(client *http.Client, u string) error {
 			return fmt.Errorf("file open failed: %s", err)
 		}
 	} else {
-		resp, err := client.Get(u)
+		req, err := http.NewRequest("GET", u, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Accept", "*/*")
+		req.Header.Set("User-Agent", "steno/0.1")
+
+		resp, err := client.Do(req)
 		if err != nil {
 			stats.fetchErrs++
 			return fmt.Errorf("fetch failed: %s", err)
