@@ -19,12 +19,16 @@ const usageTxt = `usage: bulkscrape [options] <infile-with-urls>
 Scrape articles from a list of urls and load them into a db.
 (scrapomat has a similar feature, but requires per-site config).
 
+By default, it'll bail out if more than 10 percent (+100) of the attempted
+downloads fail. This can be turned off using the -n flag.
+
 `
 
 var opts struct {
-	db      string
-	driver  string
-	verbose bool
+	db           string
+	driver       string
+	verbose      bool
+	noErrBailout bool
 }
 
 func main() {
@@ -37,6 +41,7 @@ func main() {
 	flag.StringVar(&opts.driver, "driver", "", "database driver (defaults to sqlite3 if SCRAPEOMAT_DRIVER is not set)")
 	flag.StringVar(&opts.db, "db", "", "database connection string")
 	flag.BoolVar(&opts.verbose, "v", false, "verbose")
+	flag.BoolVar(&opts.noErrBailout, "n", false, "don't bail out even if error count gets high")
 	flag.Parse()
 
 	if flag.NArg() < 1 {

@@ -63,11 +63,12 @@ func ScrapeArticles(artURLs []string, db store.Store) error {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERR: %s\n", err)
 			stats.ErrorCount++
-			// bail out if errors get out of hand
-			if stats.ErrorCount > 100+len(newArts)/10 {
-				return fmt.Errorf("too many errors (%d)", stats.ErrorCount)
+			if !opts.noErrBailout {
+				// bail out if errors get out of hand
+				if stats.ErrorCount > 100+len(newArts)/10 {
+					return fmt.Errorf("too many errors (%d)", stats.ErrorCount)
+				}
 			}
-			continue
 		}
 	}
 	return nil
