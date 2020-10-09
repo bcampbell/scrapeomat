@@ -49,6 +49,7 @@ artform
 
 xartform
 :   exclude any article urls matching this
+    Multiple xartform lines can be used.
 
 hostpat
 :   regex. urls from non matching hosts will be rejected
