@@ -13,6 +13,7 @@ import (
 
 type Options struct {
 	cutParts string
+	format   string
 	site     bool
 }
 
@@ -27,10 +28,16 @@ Tool to manipulate URL strings.
 URLs are read from read from stdin or FILES(s) (if specified).
 Writes the resulting URLs to stdout.
 
-can filter out:
+formats (using https://example.com:8080/foo/bar?id=1#wibble as example):
+
+host: "example.com"
+site: "https://example.com"
+
+-c can filter out:
 s  scheme
 u  username/password
 h  hostname (&port)
+n  port
 p  path
 q  query
 f  fragment
@@ -42,15 +49,18 @@ options:
 
 	opts := Options{}
 
-	flag.StringVar(&opts.cutParts, "c", "", "remove the specified parts (any of 'suhpqf')")
-	flag.BoolVar(&opts.site, "s", false, "just the site url (equivalent to -c pqf) eg http://example.com/foo/bar?id=20#wibble -> http://example.com")
+	flag.StringVar(&opts.format, "f", "", "output format (host,site)")
+	flag.StringVar(&opts.cutParts, "c", "", "remove the specified parts (any of 'suhnpqf')")
+	flag.BoolVar(&opts.site, "s", false, "(DEPRECATED!) just the site url (equivalent to -f site) eg http://example.com/foo/bar?id=20#wibble -> http://example.com")
 	flag.Parse()
 
 	if opts.site {
-		if opts.cutParts != "" {
-			fmt.Fprintf(os.Stderr, "ERROR: -c and -s are mutually exclusive")
+		// -s is deprecated
+		if opts.format != "" {
+			fmt.Fprintf(os.Stderr, "ERROR: -f and -s are mutually exclusive (use -f site instead)\n")
+			os.Exit(1)
 		}
-		opts.cutParts = "pqf" // cut off path, query and fragment
+		opts.format = "site"
 	}
 
 	infiles := []string{}
@@ -100,7 +110,24 @@ func doFile(filename string, opts *Options) error {
 		// Apply safe normalisations
 		purell.NormalizeURL(u, purell.FlagsSafe)
 
-		fmt.Println(u.String())
+		switch opts.format {
+		case "host":
+			fmt.Println(u.Host)
+			break
+		case "site":
+			u.Path = ""
+			u.RawPath = ""
+			u.RawQuery = ""
+			u.ForceQuery = false
+			u.Fragment = ""
+			fmt.Println(u.String())
+			break
+		case "":
+			fmt.Println(u.String())
+		default:
+			return fmt.Errorf("Unknown -f: %s", opts.format)
+		}
+
 	}
 	if err := scanner.Err(); err != nil {
 		return err
@@ -118,7 +145,12 @@ func zeroParts(u *url.URL, parts string) {
 		u.User = nil
 	}
 	if strings.Contains(parts, "h") {
+		// strip host:port
 		u.Host = ""
+	}
+	if strings.Contains(parts, "n") {
+		// just strip the port
+		u.Host = u.Hostname()
 	}
 	if strings.Contains(parts, "p") {
 		u.Path = ""
