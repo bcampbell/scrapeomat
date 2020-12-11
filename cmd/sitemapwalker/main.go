@@ -1,12 +1,13 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/xml"
-	"fmt"
-	//"io/ioutil"
 	"flag"
+	"fmt"
 	"github.com/bcampbell/arts/util"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -171,7 +172,22 @@ func doit(client *http.Client, u string) error {
 			stats.fetchErrs++
 			return fmt.Errorf("http error %d", resp.StatusCode)
 		}
-		in = resp.Body
+
+		// handle gzipped files
+		// (net/http handles compressed Content-Encoding, but this is different.
+		// some sites have sitemap.xml.gz files, which are delivered to us
+		// verbatim, ie encoded.
+		// (Might also be worth checking for .gz extension in URL? Meh. Deal
+		// with it if we see a case in the wild not covered by Content-Type).
+		if resp.Header.Get("Content-Type") == "application/x-gzip" {
+			dec, err := gzip.NewReader(resp.Body)
+			if err != nil {
+				return fmt.Errorf("gunzip failed: %s", err)
+			}
+			in = ioutil.NopCloser(dec)
+		} else {
+			in = resp.Body
+		}
 	}
 	defer in.Close()
 
