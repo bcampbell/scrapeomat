@@ -33,14 +33,27 @@ func HTTPGetWithCache(client *http.Client, u string, cacheDir string) (*http.Res
 			if err != nil {
 				return nil, err
 			}
-			// success. write to cache.
-			out, err := os.Create(cacheName)
-			if err != nil {
-				return nil, err
+			cache := false
+			// Cache 2xx, 3xx and 4xx responses
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				cache = true
 			}
-			err = warc.Write(out, resp, u, time.Now())
-			if err != nil {
-				return nil, err
+			if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+				cache = true
+			}
+			if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+				cache = true
+			}
+			if cache {
+				// success. write to cache.
+				out, err := os.Create(cacheName)
+				if err != nil {
+					return nil, err
+				}
+				err = warc.Write(out, resp, u, time.Now())
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
