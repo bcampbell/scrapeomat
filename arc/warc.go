@@ -3,40 +3,16 @@ package arc
 // helpers to write out raw HTTP requests/responses to noddy .warc files
 
 import (
-	"bytes"
 	"compress/gzip"
 	"crypto/md5"
 	"encoding/hex"
-	"fmt"
-	"io"
-	"io/ioutil"
+	"github.com/bcampbell/warc"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"time"
 )
-
-type nopCloser struct {
-	io.Reader
-}
-
-func (nopCloser) Close() error { return nil }
-
-func copyResponse(orig *http.Response) (*http.Response, error) {
-	// read body first
-	bod, err := ioutil.ReadAll(orig.Body)
-	if err != nil {
-		return nil, err
-	}
-	orig.Body.Close()
-	orig.Body = nopCloser{bytes.NewReader(bod)}
-
-	clone := *orig
-	clone.Body = nopCloser{bytes.NewReader(bod)}
-
-	return &clone, nil
-}
 
 // eg "abcdefg.foo" returns "a/ab/acb"
 func spreadPath(name string) string {
@@ -97,49 +73,5 @@ func ArchiveResponse(warcDir string, resp *http.Response, srcURL string, timeSta
 	gzw := gzip.NewWriter(outfile)
 	defer gzw.Close()
 
-	return WriteWARC(gzw, resp, srcURL, timeStamp)
-}
-
-func WriteWARC(w io.Writer, resp *http.Response, srcURL string, timeStamp time.Time) error {
-
-	// copy the response so we can peek at the body
-	tmpResp, err := copyResponse(resp)
-	if err != nil {
-		return err
-	}
-
-	var payload bytes.Buffer
-	err = tmpResp.Write(&payload)
-	if err != nil {
-		return err
-	}
-
-	warcHdr := http.Header{}
-	// required fields
-	warcHdr.Set("WARC-Record-ID", fmt.Sprintf("urn:X-scrapeomat:%d", time.Now().UnixNano()))
-	warcHdr.Set("Content-Length", fmt.Sprintf("%d", payload.Len()))
-	warcHdr.Set("WARC-Date", timeStamp.UTC().Format(time.RFC3339))
-	warcHdr.Set("WARC-Type", "response")
-	// some extras
-
-	warcHdr.Set("WARC-Target-URI", tmpResp.Request.URL.String())
-	// cheesy custom field for original url, in case we were redirected
-	warcHdr.Set("X-Scrapeomat-Srcurl", srcURL)
-	//	warcHdr.Set("WARC-IP-Address", "")
-	warcHdr.Set("Content-Type", "application/http; msgtype=response")
-
-	fmt.Fprintf(w, "WARC/1.0\r\n")
-	err = warcHdr.Write(w)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "\r\n")
-	_, err = payload.WriteTo(w)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "\r\n")
-	fmt.Fprintf(w, "\r\n")
-
-	return nil
+	return warc.Write(gzw, resp, srcURL, timeStamp)
 }
