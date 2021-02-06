@@ -169,7 +169,13 @@ func run(apiURL string, opts *Options) error {
 		CacheDir: opts.cacheDir}
 
 	tags, err := grabTags(wp)
+	if err != nil {
+		return err
+	}
 	categories, err := grabCategories(wp)
+	if err != nil {
+		return err
+	}
 
 	/*	baseURL, err := url.Parse(apiURL)
 		if err != nil {
