@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -20,6 +21,7 @@ type Options struct {
 	dayFrom, dayTo string
 	outputFormat   string // "json", "json-stream"
 	verbose        bool
+	cacheDir       string // path to cache http reqs
 }
 
 // parseDays converts the date range options into time.Time.
@@ -65,15 +67,20 @@ func main() {
 		flag.PrintDefaults()
 	}
 
+	defaultCacheDir, err := os.UserCacheDir()
+	if err == nil {
+		defaultCacheDir = filepath.Join(defaultCacheDir, "wpjsontool")
+	} else {
+		defaultCacheDir = "" // default to disabled cache
+	}
 	opts := Options{}
-
 	flag.StringVar(&opts.dayFrom, "from", "", "from date (YYYY-MM-DD)")
 	flag.StringVar(&opts.dayTo, "to", "", "to date (YYYY-MM-DD)")
 	flag.StringVar(&opts.outputFormat, "f", "json-stream", "output format: json, json-stream")
+	flag.StringVar(&opts.cacheDir, "c", defaultCacheDir, `dir to cache http requests ""=no cache`)
 	flag.BoolVar(&opts.verbose, "v", false, "verbose")
 	flag.Parse()
 
-	var err error
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "ERROR: missing API URL\n")
 		flag.Usage()
@@ -157,8 +164,9 @@ func run(apiURL string, opts *Options) error {
 	}
 
 	wp := &Client{HTTPClient: client,
-		BaseURL: apiURL,
-		Verbose: opts.verbose}
+		BaseURL:  apiURL,
+		Verbose:  opts.verbose,
+		CacheDir: opts.cacheDir}
 
 	tags, err := grabTags(wp)
 	categories, err := grabCategories(wp)

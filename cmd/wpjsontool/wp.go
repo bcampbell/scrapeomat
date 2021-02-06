@@ -18,6 +18,11 @@ type Client struct {
 	HTTPClient *http.Client
 	BaseURL    string // eg "https://example.com/wp-json"
 	Verbose    bool
+	CacheDir   string
+}
+
+func (wp *Client) Get(u string) (*http.Response, error) {
+	return HTTPGetWithCache(wp.HTTPClient, u, wp.CacheDir)
 }
 
 //
@@ -66,7 +71,7 @@ func (wp *Client) ListPosts(params url.Values) ([]*Post, int, error) {
 		fmt.Fprintf(os.Stderr, "fetch %s\n", u)
 	}
 
-	resp, err := wp.HTTPClient.Get(u)
+	resp, err := wp.Get(u)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -137,7 +142,7 @@ func (wp *Client) ListTags(params url.Values) ([]*Tag, int, error) {
 		fmt.Fprintf(os.Stderr, "fetch %s\n", u)
 	}
 
-	resp, err := wp.HTTPClient.Get(u)
+	resp, err := wp.Get(u)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -207,7 +212,7 @@ func (wp *Client) ListCategories(params url.Values) ([]*Category, int, error) {
 		fmt.Fprintf(os.Stderr, "fetch %s\n", u)
 	}
 
-	resp, err := wp.HTTPClient.Get(u)
+	resp, err := wp.Get(u)
 	if err != nil {
 		return nil, 0, err
 	}
