@@ -22,7 +22,8 @@ func HTTPGetWithCache(client *http.Client, u string, cacheDir string) (*http.Res
 		return nil, err
 	}
 
-	safeName, err := filenamify.Filenamify(u, filenamify.Options{})
+	// note: filenamify default length is 100 which is waaaaay too short for us.
+	safeName, err := filenamify.Filenamify(u, filenamify.Options{MaxLength: 250})
 	cacheName := filepath.Join(cacheDir, safeName)
 
 	resp, err := warc.ReadFile(cacheName)
