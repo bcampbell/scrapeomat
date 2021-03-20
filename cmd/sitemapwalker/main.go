@@ -23,6 +23,8 @@ var opts struct {
 	filterSitemap bool
 	from          time.Time
 	to            time.Time
+
+	maxErrs int
 }
 
 type sitemapfile struct {
@@ -62,6 +64,7 @@ Options:
 var stats struct {
 	fetchCnt      int
 	fetchErrs     int
+	parseErrs     int // Number of pages which failed to parse as XML
 	fetchRejected int
 	artsAccepted  int
 	artsRejected  int
@@ -79,6 +82,7 @@ func main() {
 	flag.StringVar(&opts.toDate, "to", "", "ignore links with LastMod after YYYY-MM-DD date")
 	flag.BoolVar(&opts.filterSitemap, "s", false, "apply date filter to <sitemap> lastmod too?")
 	flag.BoolVar(&opts.nonrecursive, "n", false, "non-recursive (don't follow <sitemap> links)")
+	flag.IntVar(&opts.maxErrs, "e", 10, "maximum errors before bailing out (XML parsing errors don't count)")
 	flag.BoolVar(&opts.verbose, "v", false, "verbose")
 	flag.Parse()
 
@@ -114,8 +118,8 @@ func main() {
 	}
 
 	if opts.verbose {
-		fmt.Fprintf(os.Stderr, "fetched %d files (%d errors, %d skipped), yielded %d links (%d rejected)\n",
-			stats.fetchCnt, stats.fetchErrs, stats.fetchRejected, stats.artsAccepted, stats.artsRejected)
+		fmt.Fprintf(os.Stderr, "fetched %d files (%d errors, %d skipped, %d badxml), yielded %d links (%d rejected)\n",
+			stats.fetchCnt, stats.fetchErrs, stats.fetchRejected, stats.parseErrs, stats.artsAccepted, stats.artsRejected)
 	}
 }
 
@@ -135,6 +139,15 @@ func parseLastMod(lastMod string) (time.Time, error) {
 	return t, err
 }
 
+func handleFetchErr(u string, err error) error {
+	stats.fetchErrs++
+	fmt.Fprintf(os.Stderr, "ERROR fetching %s - %s\n", u, err)
+	if stats.fetchErrs < opts.maxErrs {
+		return nil // keep going.
+	}
+	return fmt.Errorf("Too many errors.")
+}
+
 // fetch and process a single sitemap xml (file or url)
 func doit(client *http.Client, u string) error {
 	if opts.verbose {
@@ -143,34 +156,30 @@ func doit(client *http.Client, u string) error {
 
 	foo, err := url.Parse(u)
 	if err != nil {
-		stats.fetchErrs++
-		return err
+		return handleFetchErr(u, err)
 	}
 
 	var in io.ReadCloser
 	if foo.Scheme == "" {
 		in, err = os.Open(u)
 		if err != nil {
-			stats.fetchErrs++
-			return fmt.Errorf("file open failed: %s", err)
+			return handleFetchErr(u, err)
 		}
 	} else {
 		req, err := http.NewRequest("GET", u, nil)
 		if err != nil {
-			return err
+			return handleFetchErr(u, err)
 		}
 		req.Header.Set("Accept", "*/*")
 		req.Header.Set("User-Agent", "steno/0.1")
 
 		resp, err := client.Do(req)
 		if err != nil {
-			stats.fetchErrs++
-			return fmt.Errorf("fetch failed: %s", err)
+			return handleFetchErr(u, err)
 		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			stats.fetchErrs++
-			return fmt.Errorf("http error %d", resp.StatusCode)
+			return handleFetchErr(u, fmt.Errorf("http error %d", resp.StatusCode))
 		}
 
 		// handle gzipped files
@@ -195,7 +204,9 @@ func doit(client *http.Client, u string) error {
 
 	result, err := parse(in)
 	if err != nil {
-		return err
+		stats.parseErrs++
+		fmt.Fprintf(os.Stderr, "skipping %s - failed to parse (%s)", u, err)
+		return nil // keep going!
 	}
 
 	// dump out article links
