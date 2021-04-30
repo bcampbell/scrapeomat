@@ -127,15 +127,18 @@ func main() {
 func parseLastMod(lastMod string) (time.Time, error) {
 	var t time.Time
 	var err error
-	t, err = time.Parse(time.RFC3339, lastMod)
-	if err == nil {
-		return t, nil
-	}
-	t, err = time.Parse("2006-01-02", lastMod)
-	if err == nil {
-		return t, nil
-	}
 
+	fmts := []string{time.RFC3339,
+		"2006-01-02T15:04:05Z0700", // eg 2021-04-30T18:10:59Z
+		"2006-01-02T15:04Z0700",    // eg 2021-04-30T18:10Z
+		"2006-01-02",
+	}
+	for _, fmt := range fmts {
+		t, err = time.Parse(fmt, lastMod)
+		if err == nil {
+			return t, nil
+		}
+	}
 	return t, err
 }
 
