@@ -126,7 +126,7 @@ the HTML.
 
 You can run the discovery phase on it's own like this:
 
-    $ scrapeomat -discover -v=2 govblog
+    $ ./scrapeomat -discover -v=2 govblog
 
 If all goes well, this will output a list of article links discovered.
 
@@ -138,7 +138,7 @@ If all goes well, this will output a list of article links discovered.
 
 Once you have config files set up in the `scrapers` dir, you can run the scrapeomat eg:
 
-    $ scrapeomat -v=2 ALL
+    $ ./scrapeomat -v=2 ALL
 
 "ALL" is required to run all the scrapers.
 The scrapers will be executed in parallel.
@@ -147,7 +147,7 @@ You need to specify which database to store articles in, by passing in a databas
 This can be passed in as a commandline flag (`-db`) or via the `SCRAPEOMAT_DB` environment variable, eg:
 
     $ export SCRAPEOMAT_DB="user=scrape dbname=govblog host=/var/run/postgresql sslmode=disable"
-    $ scrapeomat ALL
+    $ ./scrapeomat ALL
 
 ### Installing Scrapeomat as a Service
 
