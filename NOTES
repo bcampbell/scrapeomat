@@ -7,7 +7,7 @@
 ## improve archive (.warc storage)
  - allow searching by time period
  - option for scrapers to check in archive before using HTTP
-
+ - use local http caching instead? eg https://pkg.go.dev/github.com/gregjones/httpcache
 
 
 

@@ -32,6 +32,7 @@ func main() {
 	transport.PerHostDelay = 1 * time.Second
 	client := &http.Client{
 		Transport: transport,
+		Timeout:   30 * time.Second,
 	}
 
 	if opts.csvInFile != "" {

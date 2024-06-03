@@ -1,12 +1,10 @@
 package extract
 
 import (
-	//	"fmt"
 	"bytes"
 	"github.com/andybalholm/cascadia"
 	"github.com/dyatlov/go-opengraph/opengraph"
 	readability "github.com/go-shiori/go-readability"
-	//	"io"
 	"golang.org/x/net/html"
 	"net/http"
 	"net/url"
@@ -14,11 +12,12 @@ import (
 )
 
 type ArtInfo struct {
-	URL           string
+	URL           *url.URL
 	Readability   *readability.Article
 	OpenGraph     *opengraph.OpenGraph
 	URLHeuristics *URLHeuristics
 	CanonicalURL  string
+	Links         []string
 }
 
 func Extract(pageURL *url.URL, header *http.Header, body []byte) (*ArtInfo, error) {
@@ -43,12 +42,15 @@ func Extract(pageURL *url.URL, header *http.Header, body []byte) (*ArtInfo, erro
 
 	canonicalURL := SniffRelCanonical(root)
 
+	links := collectLinks(pageURL, root)
+
 	return &ArtInfo{
-		URL:           pageURL.String(),
+		URL:           pageURL,
 		Readability:   &readable,
 		OpenGraph:     og,
 		URLHeuristics: uh,
 		CanonicalURL:  canonicalURL,
+		Links:         links,
 	}, nil
 
 	// TODO:
@@ -71,6 +73,7 @@ func getAttr(n *html.Node, attr string) string {
 }
 
 var (
+	selLink         = cascadia.MustCompile(`a`)
 	selRelCanonical = cascadia.MustCompile(`link[rel="canonical"]`)
 	rxSlug          = regexp.MustCompile(`(?i)[a-z0-9]+(?:-[a-z0-9]+)+`)
 	rxSlugDate      = regexp.MustCompile(`/\d{4}/\d{2}/\d{2}/`)
@@ -83,6 +86,8 @@ type URLHeuristics struct {
 	NumericID bool
 }
 
+// SniffURL picks out some information about a url that might
+// help decide if it's an article or not.
 func SniffURL(u string) *URLHeuristics {
 	h := &URLHeuristics{}
 
@@ -100,4 +105,31 @@ func SniffRelCanonical(root *html.Node) string {
 		return ""
 	}
 	return getAttr(n, "href")
+}
+
+func collectLinks(base *url.URL, root *html.Node) []string {
+	found := map[string]struct{}{}
+	for _, l := range selLink.MatchAll(root) {
+
+		href := getAttr(l, "href")
+		if href == "" {
+			continue
+		}
+		u, err := url.Parse(href)
+		if err != nil {
+			continue
+		}
+		u.Fragment = ""
+		u.RawQuery = ""
+
+		link := base.ResolveReference(u)
+
+		found[link.String()] = struct{}{}
+	}
+
+	out := []string{}
+	for link, _ := range found {
+		out = append(out, link)
+	}
+	return out
 }

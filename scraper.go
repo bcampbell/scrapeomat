@@ -376,9 +376,9 @@ func (scraper *Scraper) ScrapeArt(artURL string) (*store.Article, error) {
 	}
 
 	// other possible headers we might want to fiddle with:
-	//req.Header.Set("User-Agent", `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0`)
+	req.Header.Set("User-Agent", `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0`)
 	//req.Header.Set("Referrer", "http://...")
-	//req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 
 	resp, err := scraper.client.Do(req)
 	if err != nil {
