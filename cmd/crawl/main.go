@@ -9,8 +9,10 @@ import (
 	"github.com/bcampbell/scrapeomat/store/sqlstore"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
+	neturl "net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -56,15 +58,36 @@ options:
 	cancelFuncs := []context.CancelFunc{}
 	var wg sync.WaitGroup
 	for _, siteURL := range flag.Args() {
+		url, err := neturl.Parse(siteURL)
+		if err != nil {
+			fmt.Printf("ERR: %s\n", err)
+			continue
+		}
+
+		client, err := buildClient(filepath.Join("cache", url.Hostname()))
+		if err != nil {
+			fmt.Printf("ERR: %s\n", err)
+			continue
+		}
+
 		// Create a cancellation context for each crawler.
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelFuncs = append(cancelFuncs, cancel)
 		wg.Add(1)
 		go func(ctx context.Context, siteURL string, db store.Store) {
 			defer wg.Done()
-			err := Crawl(ctx, siteURL, db)
+
+			artURLs, err := DiscoverArticles(ctx, client, siteURL)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s ERR: %s", siteURL, err)
+				fmt.Fprintf(os.Stderr, "%s ERR: %s\n", siteURL, err)
+				return
+			}
+			fmt.Printf("%s: found %d articles\n", siteURL, len(artURLs))
+
+			err = ScrapeArticles(ctx, client, artURLs, db)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s ERR: %s\n", siteURL, err)
+				return
 			}
 		}(ctx, siteURL, db)
 	}
