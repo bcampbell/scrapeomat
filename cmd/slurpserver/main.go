@@ -1,7 +1,5 @@
 package main
 
-//go:generate go-bindata templates static
-
 // run server to provide API and web interface upon a scrapeomat database
 
 import (
@@ -25,7 +23,6 @@ var opts struct {
 }
 
 func main() {
-	//	flag.IntVar(&opts.verbosity, "v", 1, "verbosity of output (0=errors only 1=info 2=debug)")
 	flag.StringVar(&opts.connStr, "db", "", "database connection string (or set SCRAPEOMAT_DB")
 	flag.StringVar(&opts.driver, "driver", "", "database driver name (defaults to sqlite3 if SCRAPEOMAT_DRIVER is unset)")
 	flag.StringVar(&opts.prefix, "prefix", "", `url prefix (eg "/ukarticles") to allow multiple servers on same port`)

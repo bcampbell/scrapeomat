@@ -1,14 +1,20 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"github.com/bcampbell/scrapeomat/store"
-	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/gorilla/handlers"
 	"html/template"
+	"io/fs"
 	"net/http"
 	//"time"
+)
+
+var (
+	//go:embed templates static
+	content embed.FS
 )
 
 type Logger interface {
@@ -42,18 +48,16 @@ type SlurpServer struct {
 func NewServer(db store.Store, enableBrowse bool, port int, prefix string, infoLog Logger, errLog Logger) (*SlurpServer, error) {
 	srv := &SlurpServer{db: db, enableBrowse: enableBrowse, Port: port, Prefix: prefix, InfoLog: infoLog, ErrLog: errLog}
 
-	baseTmpl := string(MustAsset("templates/base.html"))
-	browseTmpl := string(MustAsset("templates/browse.html"))
-	artTmpl := string(MustAsset("templates/art.html"))
-
-	t := template.New("browse.html")
-	t.Parse(browseTmpl)
-	t.Parse(baseTmpl)
+	t, err := template.ParseFS(content, "templates/base.html", "templates/browse.html")
+	if err != nil {
+		return nil, err
+	}
 	srv.tmpls.browse = t
 
-	t = template.New("art.html")
-	t.Parse(artTmpl)
-	t.Parse(baseTmpl)
+	t, err = template.ParseFS(content, "templates/base.html", "templates/art.html")
+	if err != nil {
+		return nil, err
+	}
 	srv.tmpls.art = t
 
 	return srv, nil
@@ -103,10 +107,13 @@ func (srv *SlurpServer) Run() error {
 		})
 
 		// serve up stuff in /static
+		staticFS, err := fs.Sub(content, "static")
+		if err != nil {
+			return err
+		}
 		http.Handle(srv.Prefix+"/static/",
 			http.StripPrefix(srv.Prefix+"/static/",
-				http.FileServer(
-					&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, AssetInfo: AssetInfo, Prefix: "static"})))
+				http.FileServer(http.FS(staticFS))))
 	}
 
 	srv.InfoLog.Printf("Started at localhost:%d%s/\n", srv.Port, srv.Prefix)
