@@ -2,63 +2,93 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/bcampbell/scrapeomat/extract"
 	"github.com/bcampbell/scrapeomat/store"
 	"io/ioutil"
 	"net/http"
 	neturl "net/url"
-	"os"
 	"time"
 )
 
-func ScrapeArticles(ctx context.Context, client *http.Client, articleURLs []string, db store.Store) error {
+type ArtScraper struct {
+	Client   *http.Client
+	DB       store.Store
+	ErrLog   store.Logger
+	InfoLog  store.Logger
+	DebugLog store.Logger
+}
+
+func (s *ArtScraper) ScrapeArticles(ctx context.Context, articleURLs []string) error {
 
 	// Remove links for articles which are already in our DB.
-	newArts, err := db.WhichAreNew(articleURLs)
+	newArts, err := s.DB.WhichAreNew(articleURLs)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stdout, "scraping %d articles (%d were already in db)\n", len(newArts), len(articleURLs)-len(newArts))
+	numHad := len(articleURLs) - len(newArts)
+	//numAdded := 0
+
+	numErrors := 0
+	maxErrors := 5 + len(articleURLs)/8
+
+	s.InfoLog.Printf("scraping %d articles (%d were already in db)\n", len(newArts), numHad)
 
 	for _, artURL := range newArts {
-		req, err := buildRequest(ctx, artURL)
-		if err != nil {
-			return err
+		art, err := s.scrapeArt(ctx, artURL)
+		if err == nil {
+			artIDs, err := s.DB.Stash(art)
+			if err == nil {
+				s.DebugLog.Printf("Added %s (id=%d)\n", artURL, artIDs[0])
+			}
 		}
-
-		resp, err := client.Do(req)
 		if err != nil {
-			return err
-		}
+			if errors.Is(err, context.Canceled) {
+				return err // Bail out immediately.
+			}
 
-		// read in the body
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return err
+			numErrors++
+			s.ErrLog.Printf("(%d/%d) %s: %s\n", numErrors, maxErrors, artURL, err)
+			if numErrors > maxErrors {
+				return fmt.Errorf("Too many errors during article scrape")
+			}
 		}
-
-		// Extract the article data from the page.
-		u, err := neturl.Parse(artURL)
-		if err != nil {
-			return err
-		}
-
-		info, err := extract.Extract(u, &resp.Header, body)
-		if err != nil {
-			return err
-		}
-
-		art := toStoreArt(info)
-		artIDs, err := db.Stash(art)
-		if err != nil {
-			return err
-		}
-
-		fmt.Fprintf(os.Stdout, "Added %s (id=%d)\n", artURL, artIDs[0])
 	}
 	return nil
+}
+
+func (s *ArtScraper) scrapeArt(ctx context.Context, artURL string) (*store.Article, error) {
+	req, err := buildRequest(ctx, artURL)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err // TODO: handle http errors
+	}
+
+	// read in the body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract the article data from the page.
+	u, err := neturl.Parse(artURL)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := extract.Extract(u, &resp.Header, body)
+	if err != nil {
+		return nil, err
+	}
+
+	art := toStoreArt(info)
+	return art, nil
 }
 
 // toStoreArt wrangles data from extract.ArtInfo into a form suitable

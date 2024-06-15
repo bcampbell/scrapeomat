@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"github.com/bcampbell/arts/util"
 	"github.com/gregjones/httpcache"
 	"github.com/gregjones/httpcache/diskcache"
@@ -15,16 +14,26 @@ func buildClient(cacheDir string) (*http.Client, error) {
 
 	polite := util.NewPoliteTripper()
 	polite.PerHostDelay = 1 * time.Second
-	err := os.MkdirAll(cacheDir, 0777)
-	if err != nil {
-		return nil, err
-	}
-	cache := diskcache.New(cacheDir)
-	fmt.Printf("CACHEDIR: %s\n", cacheDir)
-	caching := httpcache.NewTransport(cache)
-	caching.Transport = polite
 
-	return &http.Client{Transport: caching}, nil
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	if cacheDir == "" {
+		client.Transport = polite
+	} else {
+		err := os.MkdirAll(cacheDir, 0777)
+		if err != nil {
+			return nil, err
+		}
+		cache := diskcache.New(cacheDir)
+		//fmt.Printf("CACHEDIR: %s\n", cacheDir)
+		caching := httpcache.NewTransport(cache)
+		caching.Transport = polite
+
+		client.Transport = caching
+	}
+	return client, nil
 }
 
 func buildRequest(ctx context.Context, url string) (*http.Request, error) {

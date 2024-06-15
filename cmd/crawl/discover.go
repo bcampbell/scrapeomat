@@ -2,26 +2,34 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/bcampbell/scrapeomat/extract"
-
 	"github.com/andybalholm/cascadia"
+	"github.com/bcampbell/scrapeomat/extract"
+	"github.com/bcampbell/scrapeomat/store"
 	"golang.org/x/net/html"
 	"net/http"
 	neturl "net/url"
-	"os"
 	"strings"
+	"time"
 )
+
+type Discoverer struct {
+	MaxDepth  int
+	numErrors int
+	visited   map[string]struct{}
+	ErrLog    store.Logger
+	InfoLog   store.Logger
+	DebugLog  store.Logger
+	StartTime time.Time
+}
 
 // DiscoverArticles crawls startURL looking for article urls.
 // ctx can be cancelled to abort the operation.
-func DiscoverArticles(ctx context.Context, client *http.Client, startURL string) ([]string, error) {
-	d := Discoverer{
-		MaxDepth: 1,
-		ctx:      ctx,
-		visited:  map[string]struct{}{},
-	}
-	artLinks, err := d.crawl(0, startURL, client)
+func (d *Discoverer) DiscoverArticles(ctx context.Context, client *http.Client, startURL string) ([]string, error) {
+	d.StartTime = time.Now()
+	d.InfoLog.Printf("start discovery at %s\n", startURL)
+	artLinks, err := d.crawl(ctx, 0, startURL, client)
 	if err != nil {
 		return nil, err
 	}
@@ -30,47 +38,54 @@ func DiscoverArticles(ctx context.Context, client *http.Client, startURL string)
 	for l, _ := range artLinks {
 		out = append(out, l)
 	}
+
+	elapsed := time.Now().Sub(d.StartTime)
+	d.InfoLog.Printf("Discovery yielded %d article (visited %d pages, with %d errors, took %v)\n", len(out), len(d.visited), d.numErrors, elapsed)
 	return out, nil
 }
 
-type Discoverer struct {
-	MaxDepth       int
-	httpErrorCount int
-	ctx            context.Context
-	visited        map[string]struct{}
-}
-
-func (d *Discoverer) crawl(depth int, url string, client *http.Client) (map[string]struct{}, error) {
+func (d *Discoverer) crawl(ctx context.Context, depth int, url string, client *http.Client) (map[string]struct{}, error) {
 	base, err := neturl.Parse(url)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := buildRequest(d.ctx, url)
+	req, err := buildRequest(ctx, url)
 
 	if err != nil {
 		return nil, err
 	}
 
 	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		defer resp.Body.Close()
 	}
-	defer resp.Body.Close()
 
-	// Allow some http errors.
-	if resp.StatusCode != 200 {
-		d.httpErrorCount++
+	// Allow some errors.
+	if err != nil || (err == nil && resp.StatusCode != 200) {
+		if errors.Is(err, context.Canceled) {
+			return nil, err // Bail out immediately.
+		}
+		d.numErrors++
 		threshold := len(d.visited) / 8
 		if threshold < 10 {
 			threshold = 10
 		}
-		if d.httpErrorCount > threshold {
-			return nil, fmt.Errorf("HTTP error: %s (%s)", resp.Status, url)
+		if err == nil {
+			// It's an http error.
+			d.ErrLog.Printf("(err %d/%d) HTTP %s %s\n", d.numErrors, threshold, resp.Status, url)
+		} else {
+			// some other error
+			d.ErrLog.Printf("(err %d/%d) %s\n", d.numErrors, threshold, err)
 		}
-		// suppress error
-		fmt.Fprintf(os.Stderr, "HTTP error (%d/%d): %s (%s)\n", d.httpErrorCount, threshold, resp.Status, url)
-		return map[string]struct{}{}, nil
+		if d.numErrors > threshold {
+			return nil, fmt.Errorf("Too many errors during discovery")
+		}
+
+		if err != nil {
+			// keep going...
+			return map[string]struct{}{}, nil
+		}
 	}
 
 	cached := false
@@ -105,13 +120,13 @@ func (d *Discoverer) crawl(depth int, url string, client *http.Client) (map[stri
 
 	foo := ""
 	if cached {
-		foo = "cached"
+		foo = " (cached)"
 	}
-	fmt.Printf("%s (depth=%d %s) %d artlinks, %d navlinks (%d new)\n", url, depth, foo, len(artLinks), len(navLinks), len(newNavLinks))
+	d.DebugLog.Printf("depth=%d%s %s - %d artlinks, %d navlinks (%d new)\n", depth, foo, url, len(artLinks), len(navLinks), len(newNavLinks))
 	if depth < d.MaxDepth {
 		// Recurse
 		for navURL, _ := range newNavLinks {
-			newArtLinks, err := d.crawl(depth+1, navURL, client)
+			newArtLinks, err := d.crawl(ctx, depth+1, navURL, client)
 			if err != nil {
 				return nil, err
 			}
