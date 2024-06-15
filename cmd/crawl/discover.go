@@ -15,20 +15,21 @@ import (
 )
 
 type Discoverer struct {
-	MaxDepth  int
-	numErrors int
-	visited   map[string]struct{}
-	ErrLog    store.Logger
-	InfoLog   store.Logger
-	DebugLog  store.Logger
-	StartTime time.Time
+	MaxDepth     int
+	numErrors    int
+	numCacheHits int
+	visited      map[string]struct{}
+	ErrLog       store.Logger
+	InfoLog      store.Logger
+	DebugLog     store.Logger
+	StartTime    time.Time
 }
 
 // DiscoverArticles crawls startURL looking for article urls.
 // ctx can be cancelled to abort the operation.
 func (d *Discoverer) DiscoverArticles(ctx context.Context, client *http.Client, startURL string) ([]string, error) {
 	d.StartTime = time.Now()
-	d.InfoLog.Printf("start discovery at %s\n", startURL)
+	d.InfoLog.Printf("Start discovery at %s\n", startURL)
 	artLinks, err := d.crawl(ctx, 0, startURL, client)
 	if err != nil {
 		return nil, err
@@ -40,7 +41,7 @@ func (d *Discoverer) DiscoverArticles(ctx context.Context, client *http.Client, 
 	}
 
 	elapsed := time.Now().Sub(d.StartTime)
-	d.InfoLog.Printf("Discovery yielded %d article (visited %d pages, with %d errors, took %v)\n", len(out), len(d.visited), d.numErrors, elapsed)
+	d.InfoLog.Printf("Discovery yielded %d articles (%d visits, %d cachehits, %d errors, took %s)\n", len(out), len(d.visited), d.numCacheHits, d.numErrors, elapsed.Truncate(time.Second))
 	return out, nil
 }
 
@@ -92,6 +93,7 @@ func (d *Discoverer) crawl(ctx context.Context, depth int, url string, client *h
 	// was cached locally?
 	if resp.Header.Get("X-From-Cache") != "" {
 		cached = true
+		d.numCacheHits++
 	}
 
 	d.visited[url] = struct{}{}
@@ -106,26 +108,29 @@ func (d *Discoverer) crawl(ctx context.Context, depth int, url string, client *h
 		return nil, err
 	}
 
-	// Figure out which nav links we've not already visited.
-	newNavLinks := map[string]struct{}{}
-	for l, _ := range navLinks {
-		if _, seen := d.visited[l]; !seen {
-			newNavLinks[l] = struct{}{}
-		}
-	}
-
 	// Aid potential garbage collection
 	resp = nil
 	root = nil
 
-	foo := ""
-	if cached {
-		foo = " (cached)"
+	// Log results from this page.
+	numNewLinks := 0
+	for l, _ := range navLinks {
+		if _, seen := d.visited[l]; !seen {
+			numNewLinks++
+		}
 	}
-	d.DebugLog.Printf("depth=%d%s %s - %d artlinks, %d navlinks (%d new)\n", depth, foo, url, len(artLinks), len(navLinks), len(newNavLinks))
+	cachedStatus := ""
+	if cached {
+		cachedStatus = " (cached)"
+	}
+	d.DebugLog.Printf("depth=%d%s %s - %d artlinks, %d navlinks (%d new)\n", depth, cachedStatus, url, len(artLinks), len(navLinks), numNewLinks)
+
 	if depth < d.MaxDepth {
 		// Recurse
-		for navURL, _ := range newNavLinks {
+		for navURL, _ := range navLinks {
+			if _, seen := d.visited[navURL]; seen {
+				continue // Already visited.
+			}
 			newArtLinks, err := d.crawl(ctx, depth+1, navURL, client)
 			if err != nil {
 				return nil, err
