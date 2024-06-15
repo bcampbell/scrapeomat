@@ -97,5 +97,5 @@ func (site *Site) Run(ctx context.Context) {
 		site.ErrLog.Printf("%s: %s\n", site.URL, err)
 		return
 	}
-	site.InfoLog.Printf("Done.\n")
+	//site.DebugLog.Printf("Done.\n")
 }

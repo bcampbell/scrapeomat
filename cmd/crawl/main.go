@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/bcampbell/scrapeomat/store/sqlstore"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,6 +23,7 @@ var opts struct {
 	driver    string // database driver
 	db        string // db connection string
 	cacheDir  string // Where to cache http data
+	sitesFile string // csv file to read sitelist from
 }
 
 func main() {
@@ -43,8 +47,24 @@ options:
 	flag.StringVar(&opts.driver, "driver", "", "database driver (overrides SCRAPEOMAT_DRIVER)")
 	flag.StringVar(&opts.db, "db", "", "database connection string (overrides SCRAPEOMAT_DB)")
 	flag.StringVar(&opts.cacheDir, "cache", "", "dir to cache http data \"\"=no cahcing")
+	flag.StringVar(&opts.sitesFile, "sites", "", "csv file containing sites to scrape")
 	flag.IntVar(&opts.verbosity, "v", 1, "verbosity (0=errors only 1=info 2=debug)")
 	flag.Parse()
+
+	// Read in target sites
+	siteList := []string{}
+	var err error
+	if opts.sitesFile != "" {
+		siteList, err = readSites(opts.sitesFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR reading %s: %s\n", opts.sitesFile, err)
+			os.Exit(1)
+		}
+	}
+	// ...and sites from commandline.
+	for _, siteURL := range flag.Args() {
+		siteList = append(siteList, siteURL)
+	}
 
 	// Set up store.
 	db, err := sqlstore.NewWithEnv(opts.driver, opts.db)
@@ -57,7 +77,7 @@ options:
 	// Set a crawl running for each site.
 	cancelFuncs := []context.CancelFunc{}
 	var wg sync.WaitGroup
-	for _, siteURL := range flag.Args() {
+	for _, siteURL := range siteList {
 		site, err := NewSite(siteURL, opts.cacheDir, opts.verbosity, db)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s ERR: %s\n", siteURL, err)
@@ -88,4 +108,52 @@ options:
 	fmt.Fprintf(os.Stderr, "waiting...\n")
 	wg.Wait()
 	fmt.Fprintf(os.Stderr, "exiting.\n")
+}
+
+func readSites(csvFile string) ([]string, error) {
+	out := []string{}
+
+	f, err := os.Open(csvFile)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	r.Comment = '#'
+
+	headers, err := r.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	urlCol := -1
+	//	statusCol := -1
+	for col, name := range headers {
+		switch strings.ToLower(name) {
+		case "url":
+			urlCol = col
+			break
+			//		case "status":
+			//			statusCol = col
+			//			break
+		}
+	}
+	if urlCol == -1 {
+		return nil, errors.New("Missing url column")
+	}
+
+	for {
+		row, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		url := row[urlCol]
+
+		out = append(out, url)
+	}
+	return out, nil
 }

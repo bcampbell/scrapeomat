@@ -29,18 +29,18 @@ func (s *ArtScraper) ScrapeArticles(ctx context.Context, articleURLs []string) e
 	}
 
 	numHad := len(articleURLs) - len(newArts)
-	//numAdded := 0
-
+	numAdded := 0
 	numErrors := 0
 	maxErrors := 5 + len(articleURLs)/8
 
-	s.InfoLog.Printf("scraping %d articles (%d were already in db)\n", len(newArts), numHad)
+	s.DebugLog.Printf("scraping %d articles (%d were already in db)\n", len(newArts), numHad)
 
 	for _, artURL := range newArts {
 		art, err := s.scrapeArt(ctx, artURL)
 		if err == nil {
 			artIDs, err := s.DB.Stash(art)
 			if err == nil {
+				numAdded++
 				s.DebugLog.Printf("Added %s (id=%d)\n", artURL, artIDs[0])
 			}
 		}
@@ -56,6 +56,9 @@ func (s *ArtScraper) ScrapeArticles(ctx context.Context, articleURLs []string) e
 			}
 		}
 	}
+
+	s.InfoLog.Printf("scrape complete. %d added, %d had, %d errors\n", numAdded, numHad, numErrors)
+
 	return nil
 }
 
