@@ -41,9 +41,19 @@ func buildRequest(ctx context.Context, url string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0")
 	req.Header.Set("Accept", "*/*")
-	req.Header.Set("User-Agent", `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0`)
-	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+
+	//	req.Header.Set("User-Agent", `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0`)
+	//	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	//	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+
+	//	req.Header.Set("Connection", "keep-alive")
+	//	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	//	req.Header.Set("Sec-Fetch-Dest", "document")
+	//	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	//	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	//	req.Header.Set("TE", "trailers")
 
 	return req, nil
 }
