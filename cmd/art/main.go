@@ -46,7 +46,7 @@ func doit(pageURL string) error {
 	if err != nil {
 		return nil
 	}
-	art, err := extract.Extract(u, resp.Header, body)
+	art, err := extract.Extract(u, &resp.Header, body)
 	if err != nil {
 		return nil
 	}
