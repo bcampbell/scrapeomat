@@ -105,6 +105,8 @@ func toStoreArt(inf *extract.ArtInfo) *store.Article {
 	}
 
 	art.Publication.Domain = inf.URL.Hostname()
+	art.Publication.Code = inf.URL.Hostname()
+
 	if inf.OpenGraph != nil {
 		og := inf.OpenGraph
 		if og.Article != nil {
