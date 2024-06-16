@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/bcampbell/scrapeomat/store"
 	"log"
-	"net/http"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -30,7 +29,7 @@ type Site struct {
 	InfoLog  store.Logger
 	DebugLog store.Logger
 	DB       store.Store
-	Client   *http.Client
+	grabber  Grabber
 }
 
 func NewSite(siteURL string, cacheDir string, verbosity int, db store.Store) (*Site, error) {
@@ -43,10 +42,8 @@ func NewSite(siteURL string, cacheDir string, verbosity int, db store.Store) (*S
 		cacheDir = filepath.Join(cacheDir, url.Hostname())
 	}
 
-	client, err := buildClient(cacheDir)
-	if err != nil {
-		return nil, err
-	}
+	//grabber, err := NewDefaultGrabber(cacheDir)
+	grabber, err := NewCurlGrabber()
 
 	name := url.Hostname()
 	name = strings.TrimPrefix(name, "www.")
@@ -56,7 +53,7 @@ func NewSite(siteURL string, cacheDir string, verbosity int, db store.Store) (*S
 		InfoLog:  nullLogger{},
 		DebugLog: nullLogger{},
 		DB:       db,
-		Client:   client,
+		grabber:  grabber,
 	}
 
 	// Set up logging
@@ -78,14 +75,14 @@ func (site *Site) Run(ctx context.Context) {
 		DebugLog: site.DebugLog,
 		visited:  map[string]struct{}{},
 	}
-	artURLs, err := d.DiscoverArticles(ctx, site.Client, site.URL)
+	artURLs, err := d.DiscoverArticles(ctx, site.grabber, site.URL)
 	if err != nil {
 		site.ErrLog.Printf("%s: %s\n", site.URL, err)
 		return
 	}
 
 	scraper := &ArtScraper{
-		Client:   site.Client,
+		grabber:  site.grabber,
 		DB:       site.DB,
 		ErrLog:   site.ErrLog,
 		InfoLog:  site.InfoLog,

@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"github.com/bcampbell/scrapeomat/extract"
 	"github.com/bcampbell/scrapeomat/store"
-	"io/ioutil"
-	"net/http"
 	neturl "net/url"
 	"time"
 )
 
 type ArtScraper struct {
-	Client   *http.Client
+	grabber  Grabber
 	DB       store.Store
 	ErrLog   store.Logger
 	InfoLog  store.Logger
@@ -63,18 +61,8 @@ func (s *ArtScraper) ScrapeArticles(ctx context.Context, articleURLs []string) e
 }
 
 func (s *ArtScraper) scrapeArt(ctx context.Context, artURL string) (*store.Article, error) {
-	req, err := buildRequest(ctx, artURL)
-	if err != nil {
-		return nil, err
-	}
 
-	resp, err := s.Client.Do(req)
-	if err != nil {
-		return nil, err // TODO: handle http errors
-	}
-
-	// read in the body
-	body, err := ioutil.ReadAll(resp.Body)
+	header, body, err := s.grabber.Grab(ctx, artURL)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +73,7 @@ func (s *ArtScraper) scrapeArt(ctx context.Context, artURL string) (*store.Artic
 		return nil, err
 	}
 
-	info, err := extract.Extract(u, &resp.Header, body)
+	info, err := extract.Extract(u, &header, body)
 	if err != nil {
 		return nil, err
 	}

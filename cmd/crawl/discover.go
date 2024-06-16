@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"github.com/bcampbell/scrapeomat/extract"
 	"github.com/bcampbell/scrapeomat/store"
 	"golang.org/x/net/html"
-	"net/http"
 	neturl "net/url"
 	"strings"
 	"time"
@@ -27,10 +27,10 @@ type Discoverer struct {
 
 // DiscoverArticles crawls startURL looking for article urls.
 // ctx can be cancelled to abort the operation.
-func (d *Discoverer) DiscoverArticles(ctx context.Context, client *http.Client, startURL string) ([]string, error) {
+func (d *Discoverer) DiscoverArticles(ctx context.Context, grabber Grabber, startURL string) ([]string, error) {
 	d.StartTime = time.Now()
 	d.InfoLog.Printf("Start discovery at %s\n", startURL)
-	artLinks, err := d.crawl(ctx, 0, startURL, client)
+	artLinks, err := d.crawl(ctx, 0, startURL, grabber)
 	if err != nil {
 		return nil, err
 	}
@@ -45,60 +45,42 @@ func (d *Discoverer) DiscoverArticles(ctx context.Context, client *http.Client, 
 	return out, nil
 }
 
-func (d *Discoverer) crawl(ctx context.Context, depth int, url string, client *http.Client) (map[string]struct{}, error) {
+func (d *Discoverer) crawl(ctx context.Context, depth int, url string, grabber Grabber) (map[string]struct{}, error) {
 	base, err := neturl.Parse(url)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := buildRequest(ctx, url)
-
+	header, body, err := grabber.Grab(ctx, url)
 	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.Do(req)
-	if err == nil {
-		defer resp.Body.Close()
-	}
-
-	// Allow some errors.
-	if err != nil || (err == nil && resp.StatusCode != 200) {
 		if errors.Is(err, context.Canceled) {
 			return nil, err // Bail out immediately.
 		}
+		// Allow some errors.
 		d.numErrors++
 		threshold := len(d.visited) / 8
 		if threshold < 10 {
 			threshold = 10
 		}
-		if err == nil {
-			// It's an http error.
-			d.ErrLog.Printf("(err %d/%d) HTTP %s %s\n", d.numErrors, threshold, resp.Status, url)
-		} else {
-			// some other error
-			d.ErrLog.Printf("(err %d/%d) %s\n", d.numErrors, threshold, err)
-		}
+		d.ErrLog.Printf("(err %d/%d) %s\n", d.numErrors, threshold, err)
 		if d.numErrors > threshold {
 			return nil, fmt.Errorf("Too many errors during discovery")
 		}
 
-		if err != nil {
-			// keep going...
-			return map[string]struct{}{}, nil
-		}
+		// Swallow error, continue crawling.
+		return map[string]struct{}{}, nil
 	}
 
 	cached := false
 	// was cached locally?
-	if resp.Header.Get("X-From-Cache") != "" {
+	if header.Get("X-From-Cache") != "" {
 		cached = true
 		d.numCacheHits++
 	}
 
 	d.visited[url] = struct{}{}
 
-	root, err := html.Parse(resp.Body)
+	root, err := html.Parse(bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +91,6 @@ func (d *Discoverer) crawl(ctx context.Context, depth int, url string, client *h
 	}
 
 	// Aid potential garbage collection
-	resp = nil
 	root = nil
 
 	// Log results from this page.
@@ -131,7 +112,7 @@ func (d *Discoverer) crawl(ctx context.Context, depth int, url string, client *h
 			if _, seen := d.visited[navURL]; seen {
 				continue // Already visited.
 			}
-			newArtLinks, err := d.crawl(ctx, depth+1, navURL, client)
+			newArtLinks, err := d.crawl(ctx, depth+1, navURL, grabber)
 			if err != nil {
 				return nil, err
 			}
