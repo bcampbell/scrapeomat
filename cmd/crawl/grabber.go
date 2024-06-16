@@ -98,6 +98,7 @@ func (g *DefaultGrabber) Grab(ctx context.Context, url string) (http.Header, []b
 
 // CurlGrabber is a grabber which calls commandline curl to fetch the page.
 type CurlGrabber struct {
+	lastGrab time.Time
 }
 
 func NewCurlGrabber() (*CurlGrabber, error) {
@@ -105,6 +106,12 @@ func NewCurlGrabber() (*CurlGrabber, error) {
 }
 
 func (g *CurlGrabber) Grab(ctx context.Context, url string) (http.Header, []byte, error) {
+	pause := time.Until(g.lastGrab.Add(1 * time.Second))
+	if pause > 0 {
+		time.Sleep(pause)
+	}
+	g.lastGrab = time.Now()
+
 	ctx2, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
