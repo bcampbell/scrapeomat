@@ -42,6 +42,36 @@ func (ss *SQLStore) Stash(arts ...*store.Article) ([]int, error) {
 	return ids, nil
 }
 
+// FindOrAddPublications finds or adds given publication entries to the
+// database. Returns a list of publication IDs.
+func (ss *SQLStore) FindOrAddPublications(pubs ...*store.Publication) ([]int, error) {
+	var err error
+	var tx *sql.Tx
+	tx, err = ss.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err == nil {
+			tx.Commit()
+		} else {
+			tx.Rollback()
+		}
+	}()
+
+	ids := make([]int, 0, len(pubs))
+	for _, pub := range pubs {
+		var pubID int
+		pubID, err := ss.findOrCreatePublication(tx, pub)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, pubID)
+	}
+	return ids, nil
+}
+
 func (ss *SQLStore) stashArticle(tx *sql.Tx, art *store.Article) (int, error) {
 	pubID, err := ss.findOrCreatePublication(tx, &art.Publication)
 	if err != nil {

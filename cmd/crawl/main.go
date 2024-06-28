@@ -24,6 +24,7 @@ var opts struct {
 	db        string // db connection string
 	cacheDir  string // Where to cache http data
 	sitesFile string // csv file to read sitelist from
+	loadPubs  bool   // load publications then exit
 }
 
 func main() {
@@ -48,6 +49,7 @@ options:
 	flag.StringVar(&opts.db, "db", "", "database connection string (overrides SCRAPEOMAT_DB)")
 	flag.StringVar(&opts.cacheDir, "cache", "", "dir to cache http data \"\"=no cahcing")
 	flag.StringVar(&opts.sitesFile, "sites", "", "csv file containing sites to scrape")
+	flag.BoolVar(&opts.loadPubs, "loadpubs", false, "Ensure publication entries exist for all given sites, then exit")
 	flag.IntVar(&opts.verbosity, "v", 1, "verbosity (0=errors only 1=info 2=debug)")
 	flag.Parse()
 
@@ -73,6 +75,16 @@ options:
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// just loading publications into db?
+	if opts.loadPubs {
+		err = loadPubs(db, siteList)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR reading %s: %s\n", opts.sitesFile, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Set a crawl running for each site.
 	cancelFuncs := []context.CancelFunc{}

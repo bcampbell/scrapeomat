@@ -25,6 +25,7 @@ type Store interface {
 	Stash(arts ...*Article) ([]int, error)
 	WhichAreNew(artURLs []string) ([]string, error)
 	FindURLs(urls []string) ([]int, error)
+	FindOrAddPublications(pubs ...*Publication) ([]int, error)
 	FetchCount(filt *Filter) (int, error)
 	Fetch(filt *Filter) ArtIter
 	FetchPublications() ([]Publication, error)
