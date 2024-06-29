@@ -11,20 +11,23 @@ import (
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"io"
+	neturl "net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 )
 
 var opts struct {
-	verbosity int
-	driver    string // database driver
-	db        string // db connection string
-	cacheDir  string // Where to cache http data
-	sitesFile string // csv file to read sitelist from
-	loadPubs  bool   // load publications then exit
+	verbosity   int
+	driver      string // database driver
+	db          string // db connection string
+	cacheDir    string // Where to cache http data
+	sitesFile   string // csv file to read sitelist from
+	loadPubs    bool   // load publications then exit
+	grabberKind string // which Grabber to use
 }
 
 func main() {
@@ -48,6 +51,7 @@ options:
 	flag.StringVar(&opts.driver, "driver", "", "database driver (overrides SCRAPEOMAT_DRIVER)")
 	flag.StringVar(&opts.db, "db", "", "database connection string (overrides SCRAPEOMAT_DB)")
 	flag.StringVar(&opts.cacheDir, "cache", "", "dir to cache http data \"\"=no cahcing")
+	flag.StringVar(&opts.grabberKind, "grabber", "", "how to fetch http (\"\"=built-in default, \"curl\" to use curl)")
 	flag.StringVar(&opts.sitesFile, "sites", "", "csv file containing sites to scrape")
 	flag.BoolVar(&opts.loadPubs, "loadpubs", false, "Ensure publication entries exist for all given sites, then exit")
 	flag.IntVar(&opts.verbosity, "v", 1, "verbosity (0=errors only 1=info 2=debug)")
@@ -90,7 +94,8 @@ options:
 	cancelFuncs := []context.CancelFunc{}
 	var wg sync.WaitGroup
 	for _, siteURL := range siteList {
-		site, err := NewSite(siteURL, opts.cacheDir, opts.verbosity, db)
+		grabber, err := initGrabber(siteURL, opts.grabberKind, opts.cacheDir)
+		site, err := NewSite(siteURL, grabber, opts.verbosity, db)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s ERR: %s\n", siteURL, err)
 			continue
@@ -168,4 +173,26 @@ func readSites(csvFile string) ([]string, error) {
 		out = append(out, url)
 	}
 	return out, nil
+}
+
+func initGrabber(siteURL string, grabberKind string, cacheDir string) (Grabber, error) {
+
+	switch grabberKind {
+	case "":
+		{
+			url, err := neturl.Parse(siteURL)
+			if err != nil {
+				return nil, err
+			}
+			if cacheDir != "" {
+				cacheDir = filepath.Join(cacheDir, url.Hostname())
+			}
+
+			return NewDefaultGrabber(cacheDir)
+		}
+	case "curl":
+		return NewCurlGrabber()
+	default:
+		return nil, errors.New("Unknown grabber")
+	}
 }

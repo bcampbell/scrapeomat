@@ -7,7 +7,6 @@ import (
 	"log"
 	neturl "net/url"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -32,19 +31,11 @@ type Site struct {
 	grabber  Grabber
 }
 
-func NewSite(siteURL string, cacheDir string, verbosity int, db store.Store) (*Site, error) {
+func NewSite(siteURL string, grabber Grabber, verbosity int, db store.Store) (*Site, error) {
 	url, err := neturl.Parse(siteURL)
 	if err != nil {
 		return nil, err
 	}
-
-	if cacheDir != "" {
-		cacheDir = filepath.Join(cacheDir, url.Hostname())
-	}
-
-	//grabber, err := NewDefaultGrabber(cacheDir)
-	grabber, err := NewCurlGrabber()
-
 	name := url.Hostname()
 	name = strings.TrimPrefix(name, "www.")
 	site := &Site{
