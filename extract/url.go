@@ -11,7 +11,7 @@ var (
 	//	selRelCanonical = cascadia.MustCompile(`link[rel="canonical"]`)
 	reSlugDate  = regexp.MustCompile(`/\d{4}/\d{2}/\d{2}/`)
 	reNumericID = regexp.MustCompile(`\d{5,}`)
-	reSlug      = regexp.MustCompile(`(?i)/([a-z0-9]+(?:[-_][-_a-z0-9]+)+)/?$`)
+	reSlug      = regexp.MustCompile(`(?i)/([a-z0-9]+(?:[-_.][-_.%a-z0-9]+)+)/?$`)
 )
 
 func SlugFromURL(u *neturl.URL) string {
