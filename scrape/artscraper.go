@@ -1,17 +1,19 @@
-package main
+// Package scrape provides tools for scraping a list of article urls and loading them into the store.
+package scrape
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"github.com/bcampbell/scrapeomat/extract"
+	"github.com/bcampbell/scrapeomat/grab"
 	"github.com/bcampbell/scrapeomat/store"
 	neturl "net/url"
 	"time"
 )
 
 type ArtScraper struct {
-	grabber  Grabber
+	Grabber  grab.Grabber
 	DB       store.Store
 	ErrLog   store.Logger
 	InfoLog  store.Logger
@@ -60,9 +62,10 @@ func (s *ArtScraper) ScrapeArticles(ctx context.Context, articleURLs []string) e
 	return nil
 }
 
+// scrapeArt attempts to scrape an individual article, returning it in a form that be added to the store.
 func (s *ArtScraper) scrapeArt(ctx context.Context, artURL string) (*store.Article, error) {
 
-	header, body, err := s.grabber.Grab(ctx, artURL)
+	header, body, err := s.Grabber.Grab(ctx, artURL)
 	if err != nil {
 		return nil, err
 	}

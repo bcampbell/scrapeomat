@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/bcampbell/scrapeomat/grab"
+	"github.com/bcampbell/scrapeomat/scrape"
 	"github.com/bcampbell/scrapeomat/store"
 	"log"
 	neturl "net/url"
@@ -28,10 +30,10 @@ type Site struct {
 	InfoLog  store.Logger
 	DebugLog store.Logger
 	DB       store.Store
-	grabber  Grabber
+	grabber  grab.Grabber
 }
 
-func NewSite(siteURL string, grabber Grabber, verbosity int, db store.Store) (*Site, error) {
+func NewSite(siteURL string, grabber grab.Grabber, verbosity int, db store.Store) (*Site, error) {
 	url, err := neturl.Parse(siteURL)
 	if err != nil {
 		return nil, err
@@ -72,8 +74,8 @@ func (site *Site) Run(ctx context.Context) {
 		return
 	}
 
-	scraper := &ArtScraper{
-		grabber:  site.grabber,
+	scraper := &scrape.ArtScraper{
+		Grabber:  site.grabber,
 		DB:       site.DB,
 		ErrLog:   site.ErrLog,
 		InfoLog:  site.InfoLog,

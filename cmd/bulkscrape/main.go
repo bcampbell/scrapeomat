@@ -2,33 +2,38 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/bcampbell/scrapeomat/grab"
+	"github.com/bcampbell/scrapeomat/scrape"
+	"github.com/bcampbell/scrapeomat/store"
 	"github.com/bcampbell/scrapeomat/store/sqlstore"
 )
 
-const usageTxt = `usage: bulkscrape [options] <infile-with-urls>
+const usageTxt = `usage: bulkscrape [OPTIONS] [URLFILE]...
 
-Scrape articles from a list of urls and load them into a db.
-(scrapomat has a similar feature, but requires per-site config).
-
-By default, it'll bail out if more than 10 percent (+100) of the attempted
-downloads fail. This can be turned off using the -n flag.
-
+Scrape articles from a url lists in URLFILEs and load them into a db.
 `
 
 var opts struct {
 	db           string
 	driver       string
-	verbose      bool
+	verbosity    int
 	noErrBailout bool
+}
+
+type nullLogger struct{}
+
+func (l nullLogger) Printf(format string, v ...interface{}) {
 }
 
 func main() {
@@ -40,8 +45,7 @@ func main() {
 
 	flag.StringVar(&opts.driver, "driver", "", "database driver (defaults to sqlite3 if SCRAPEOMAT_DRIVER is not set)")
 	flag.StringVar(&opts.db, "db", "", "database connection string")
-	flag.BoolVar(&opts.verbose, "v", false, "verbose")
-	flag.BoolVar(&opts.noErrBailout, "n", false, "don't bail out even if error count gets high")
+	flag.IntVar(&opts.verbosity, "v", 0, "0=errors only, 1=info, 2=debug")
 	flag.Parse()
 
 	if flag.NArg() < 1 {
@@ -49,38 +53,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	// collect urls
+	// Set up logging
+	var errLog store.Logger = log.New(os.Stderr, "E: ", 0)
+	var infoLog store.Logger = nullLogger{}
+	var debugLog store.Logger = nullLogger{}
+	if opts.verbosity >= 1 {
+		infoLog = log.New(os.Stderr, "I: ", 0)
+	}
+	if opts.verbosity >= 2 {
+		debugLog = log.New(os.Stderr, "D: ", 0)
+	}
+
+	// Collect urls
 	artURLs := []string{}
 	for _, filename := range flag.Args() {
-		if opts.verbose {
-			fmt.Fprintf(os.Stderr, "reading urls from %s\n", filename)
-		}
-		var inFile io.Reader
-		var err error
-		if filename == "-" {
-			inFile = os.Stdin
-		} else {
-			inFile, err = os.Open(filename)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s: %s\n", filename, err)
-				os.Exit(1)
-			}
-		}
-		scanner := bufio.NewScanner(inFile)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line != "" {
-				artURLs = append(artURLs, line)
-			}
-		}
-		if err = scanner.Err(); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR reading %s: %s\n", filename, err)
+		debugLog.Printf("reading urls from %s\n", filename)
+		urls, err := loadURLs(filename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 			os.Exit(1)
 		}
+		artURLs = append(artURLs, urls...)
 	}
-	if opts.verbose {
-		fmt.Fprintf(os.Stderr, "got %d urls\n", len(artURLs))
-	}
+	infoLog.Printf("got %d urls\n", len(artURLs))
 
 	// set up the database
 	db, err := sqlstore.NewWithEnv(opts.driver, opts.db)
@@ -90,10 +85,53 @@ func main() {
 	}
 	defer db.Close()
 
-	// scrape them!
-	err = ScrapeArticles(artURLs, db)
+	// set up the grabber
+	grabber, err := grab.NewDefaultGrabber("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
 	}
+
+	// Scrape the articles
+	scraper := &scrape.ArtScraper{
+		Grabber:  grabber,
+		DB:       db,
+		ErrLog:   errLog,
+		InfoLog:  infoLog,
+		DebugLog: debugLog,
+	}
+
+	err = scraper.ScrapeArticles(context.Background(), artURLs)
+	if err != nil {
+		errLog.Printf("%s", err)
+		os.Exit(1)
+	}
+}
+
+// loadURLs() loads a list of urls from a file, one url per line.
+// Blank lines are ok and will be ignored.
+// If filename is "-", read from stdin.
+func loadURLs(filename string) ([]string, error) {
+	artURLs := []string{}
+	var inFile io.Reader
+	var err error
+	if filename == "-" {
+		inFile = os.Stdin
+	} else {
+		inFile, err = os.Open(filename)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %s\n", filename, err)
+		}
+	}
+	scanner := bufio.NewScanner(inFile)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			artURLs = append(artURLs, line)
+		}
+	}
+	if err = scanner.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %s\n", filename, err)
+	}
+	return artURLs, nil
 }

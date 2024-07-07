@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/bcampbell/scrapeomat/grab"
 	"github.com/bcampbell/scrapeomat/store/sqlstore"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
@@ -175,7 +176,7 @@ func readSites(csvFile string) ([]string, error) {
 	return out, nil
 }
 
-func initGrabber(siteURL string, grabberKind string, cacheDir string) (Grabber, error) {
+func initGrabber(siteURL string, grabberKind string, cacheDir string) (grab.Grabber, error) {
 
 	switch grabberKind {
 	case "":
@@ -188,10 +189,10 @@ func initGrabber(siteURL string, grabberKind string, cacheDir string) (Grabber, 
 				cacheDir = filepath.Join(cacheDir, url.Hostname())
 			}
 
-			return NewDefaultGrabber(cacheDir)
+			return grab.NewDefaultGrabber(cacheDir)
 		}
 	case "curl":
-		return NewCurlGrabber()
+		return grab.NewCurlGrabber()
 	default:
 		return nil, errors.New("Unknown grabber")
 	}

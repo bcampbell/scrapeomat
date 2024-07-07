@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/andybalholm/cascadia"
 	"github.com/bcampbell/scrapeomat/extract"
+	"github.com/bcampbell/scrapeomat/grab"
 	"github.com/bcampbell/scrapeomat/store"
 	"golang.org/x/net/html"
 	neturl "net/url"
@@ -27,7 +28,7 @@ type Discoverer struct {
 
 // DiscoverArticles crawls startURL looking for article urls.
 // ctx can be cancelled to abort the operation.
-func (d *Discoverer) DiscoverArticles(ctx context.Context, grabber Grabber, startURL string) ([]string, error) {
+func (d *Discoverer) DiscoverArticles(ctx context.Context, grabber grab.Grabber, startURL string) ([]string, error) {
 	d.StartTime = time.Now()
 	d.InfoLog.Printf("Start discovery at %s\n", startURL)
 	artLinks, err := d.crawl(ctx, 0, startURL, grabber)
@@ -45,7 +46,7 @@ func (d *Discoverer) DiscoverArticles(ctx context.Context, grabber Grabber, star
 	return out, nil
 }
 
-func (d *Discoverer) crawl(ctx context.Context, depth int, url string, grabber Grabber) (map[string]struct{}, error) {
+func (d *Discoverer) crawl(ctx context.Context, depth int, url string, grabber grab.Grabber) (map[string]struct{}, error) {
 	base, err := neturl.Parse(url)
 	if err != nil {
 		return nil, err
