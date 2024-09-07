@@ -2,10 +2,13 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/bcampbell/scrapeomat/slurp"
 	"golang.org/x/crypto/ssh/terminal"
+	"io"
+	neturl "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -13,17 +16,18 @@ import (
 )
 
 var opts struct {
-	server    string
-	from, to  string
-	pubs      pubArgs
-	termWidth int
-	csv       bool
+	server       string
+	from, to     string
+	pubs         stringArgs
+	csvSiteFiles stringArgs
+	termWidth    int
+	csv          bool
 }
 
-type pubArgs []string
+type stringArgs []string
 
-func (p *pubArgs) String() string         { return fmt.Sprintf("%s", *p) }
-func (p *pubArgs) Set(value string) error { *p = append(*p, value); return nil }
+func (p *stringArgs) String() string         { return fmt.Sprintf("%s", *p) }
+func (p *stringArgs) Set(value string) error { *p = append(*p, value); return nil }
 
 func init() {
 	flag.StringVar(&opts.from, "from", "", "from date")
@@ -31,7 +35,8 @@ func init() {
 	flag.IntVar(&opts.termWidth, "w", 0, "output width (0=auto)")
 	flag.StringVar(&opts.server, "s", "http://localhost:12345", "`url` of API server to query")
 	flag.BoolVar(&opts.csv, "c", false, "output as csv rather than ascii-art")
-	flag.Var(&opts.pubs, "p", "publication code(s)")
+	flag.Var(&opts.pubs, "p", "publication code(s) to query")
+	flag.Var(&opts.csvSiteFiles, "sites", "master site list csv files with a 'url' column (ensures those sites will appear in results even if no articles)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS]\n", os.Args[0])
@@ -78,8 +83,19 @@ func main() {
 
 	filt.PubCodes = opts.pubs
 
-	slurper := slurp.NewSlurper(opts.server)
+	// Load in any site lists.
+	masterSiteList := []string{}
+	for _, listFile := range opts.csvSiteFiles {
+		urls, err := readSites(listFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading %s: %s\n", listFile, err)
+			os.Exit(2)
+		}
+		masterSiteList = append(masterSiteList, urls...)
+	}
 
+	// Call the API to fetch the raw summary data.
+	slurper := slurp.NewSlurper(opts.server)
 	raw, err := slurper.Summary(&filt)
 
 	if err != nil {
@@ -87,8 +103,14 @@ func main() {
 		os.Exit(2)
 	}
 
+	// If we have a master site list, add in empty placeholder entries for any
+	// which don't show up in the results, so the user can spot any gaps in coverage.
+	addMissingSites(raw, masterSiteList)
+
+	// Cook the raw data to order by day and fill in missing days.
 	cooked := slurp.CookSummary(raw)
 
+	// Output the results!
 	if opts.csv {
 		err = dumpCSV(cooked)
 		if err != nil {
@@ -163,4 +185,97 @@ func dumpCSV(cooked *slurp.CookedSummary) error {
 	}
 	out.Flush()
 	return out.Error()
+}
+
+// readSites reads the "url" column of csvFile.
+// (straight cut & paste from crawl/main.go)
+func readSites(csvFile string) ([]string, error) {
+	out := []string{}
+
+	f, err := os.Open(csvFile)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	r.Comment = '#'
+
+	headers, err := r.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	urlCol := -1
+	//	statusCol := -1
+	for col, name := range headers {
+		switch strings.ToLower(name) {
+		case "url":
+			urlCol = col
+			break
+			//		case "status":
+			//			statusCol = col
+			//			break
+		}
+	}
+	if urlCol == -1 {
+		return nil, errors.New("Missing url column")
+	}
+
+	for {
+		row, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		url := row[urlCol]
+
+		out = append(out, url)
+	}
+	return out, nil
+}
+
+// urlToPubcodes converts a site url to potential pubcodes which might be used.
+// The "prefered" one will be first in the list:
+// "https://www.dailyfoobar.com/home" => ["www.dailyfoobar.com", "dailyfoobar.com"]
+// "https://dailyfoobar.com" => ["dailyfoobar.com", "www.dailyfoobar.com"]
+// "/badurl.html" => []
+func urlToPubcodes(siteURL string) []string {
+	parsed, err := neturl.Parse(siteURL)
+	if err != nil {
+		return []string{}
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if strings.HasPrefix(host, "www.") {
+		return []string{host, strings.TrimPrefix(host, "www.")}
+	} else {
+		return []string{host, "www." + host}
+	}
+}
+
+// addMissingSites adds empty result entries into the raw data for any sites
+// which are not already represented.
+// Mutates the 'raw' param.
+func addMissingSites(raw slurp.RawSummary, siteURLs []string) {
+	for _, siteURL := range siteURLs {
+		alreadyGot := false
+		pubCodes := urlToPubcodes(siteURL)
+		if len(pubCodes) < 1 {
+			fmt.Fprintf(os.Stderr, "WARN: couldn't get a pubcode from '%s' - ignoring.", siteURL)
+			continue
+		}
+		for _, code := range pubCodes {
+			if _, got := raw[code]; got {
+				alreadyGot = true
+			}
+		}
+
+		if !alreadyGot {
+			// Add an empty placeholder entry for the "preferred" (first)
+			// pubcode.
+			raw[pubCodes[0]] = map[string]int{}
+		}
+	}
 }

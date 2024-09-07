@@ -128,6 +128,7 @@ options:
 	fmt.Fprintf(os.Stderr, "exiting.\n")
 }
 
+// readSites reads the "url" column of csvFile.
 func readSites(csvFile string) ([]string, error) {
 	out := []string{}
 
