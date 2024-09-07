@@ -2,13 +2,10 @@ package main
 
 import (
 	"encoding/csv"
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/bcampbell/scrapeomat/slurp"
 	"golang.org/x/crypto/ssh/terminal"
-	"io"
-	neturl "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -84,14 +81,14 @@ func main() {
 	filt.PubCodes = opts.pubs
 
 	// Load in any site lists.
-	masterSiteList := []string{}
+	masterSiteList := []Site{}
 	for _, listFile := range opts.csvSiteFiles {
-		urls, err := readSites(listFile)
+		sites, err := readSites(listFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading %s: %s\n", listFile, err)
 			os.Exit(2)
 		}
-		masterSiteList = append(masterSiteList, urls...)
+		masterSiteList = append(masterSiteList, sites...)
 	}
 
 	// Call the API to fetch the raw summary data.
@@ -105,20 +102,22 @@ func main() {
 
 	// If we have a master site list, add in empty placeholder entries for any
 	// which don't show up in the results, so the user can spot any gaps in coverage.
-	addMissingSites(raw, masterSiteList)
+	// If no master site list, siteIndex will just be empty, which is fine.
+	siteIndex := indexSites(raw, masterSiteList)
+	addMissingSites(raw, siteIndex)
 
 	// Cook the raw data to order by day and fill in missing days.
 	cooked := slurp.CookSummary(raw)
 
 	// Output the results!
 	if opts.csv {
-		err = dumpCSV(cooked)
+		err = dumpCSV(cooked, siteIndex)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 			os.Exit(1)
 		}
 	} else {
-		dump(cooked, opts.termWidth)
+		dump(cooked, siteIndex, opts.termWidth)
 	}
 }
 
@@ -139,21 +138,27 @@ func weekday(day string) string {
 	return t.Weekday().String()[:1]
 }
 
-func dump(cooked *slurp.CookedSummary, termW int) {
+// Dump out data as ascii chart, per publication.
+func dump(cooked *slurp.CookedSummary, siteIndex map[string]*Site, termW int) {
 
 	numReserve := len(fmt.Sprintf("%d", cooked.Max))
 
 	w := termW - (1 + 1 + 10 + 1 + numReserve + 1 + 1)
 
 	for i, pubCode := range cooked.PubCodes {
+		pub := ""
+		if site, got := siteIndex[pubCode]; got {
+			pub = " (" + site.Publisher + ")"
+		}
 		dat := cooked.Data[i]
-		fmt.Printf("%s\n", pubCode)
+		fmt.Printf("%s%s\n", pubCode, pub)
 		for j, cnt := range dat {
 			n := (cnt * 1024) / cooked.Max
 			n = (n * w) / 1024
 			day := cooked.Days[j]
 			bar := strings.Repeat("*", n)
 			wd := weekday(day)
+
 			fmt.Printf("%s %10s %*d %s\n", wd, day, numReserve, cnt, bar)
 		}
 		fmt.Printf("\n")
@@ -162,12 +167,11 @@ func dump(cooked *slurp.CookedSummary, termW int) {
 }
 
 // Output the summary as a csv file
-func dumpCSV(cooked *slurp.CookedSummary) error {
-
+func dumpCSV(cooked *slurp.CookedSummary, siteIndex map[string]*Site) error {
 	out := csv.NewWriter(os.Stdout)
 
 	// header
-	header := []string{"publication"}
+	header := []string{"publication", "publisher"}
 	for _, day := range cooked.Days {
 		header = append(header, day)
 	}
@@ -175,107 +179,21 @@ func dumpCSV(cooked *slurp.CookedSummary) error {
 
 	//
 	for i, pubCode := range cooked.PubCodes {
+		site := siteIndex[pubCode]
 		dat := cooked.Data[i]
 		row := make([]string, len(header))
 		row[0] = pubCode
+		if site != nil {
+			row[1] = site.Publisher
+		} else {
+			row[1] = ""
+		}
 		for j, cnt := range dat {
-			row[1+j] = strconv.Itoa(cnt)
+			row[2+j] = strconv.Itoa(cnt)
 		}
 		out.Write(row)
 	}
 	out.Flush()
+
 	return out.Error()
-}
-
-// readSites reads the "url" column of csvFile.
-// (straight cut & paste from crawl/main.go)
-func readSites(csvFile string) ([]string, error) {
-	out := []string{}
-
-	f, err := os.Open(csvFile)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	r := csv.NewReader(f)
-	r.Comment = '#'
-
-	headers, err := r.Read()
-	if err != nil {
-		return nil, err
-	}
-
-	urlCol := -1
-	//	statusCol := -1
-	for col, name := range headers {
-		switch strings.ToLower(name) {
-		case "url":
-			urlCol = col
-			break
-			//		case "status":
-			//			statusCol = col
-			//			break
-		}
-	}
-	if urlCol == -1 {
-		return nil, errors.New("Missing url column")
-	}
-
-	for {
-		row, err := r.Read()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		url := row[urlCol]
-
-		out = append(out, url)
-	}
-	return out, nil
-}
-
-// urlToPubcodes converts a site url to potential pubcodes which might be used.
-// The "prefered" one will be first in the list:
-// "https://www.dailyfoobar.com/home" => ["www.dailyfoobar.com", "dailyfoobar.com"]
-// "https://dailyfoobar.com" => ["dailyfoobar.com", "www.dailyfoobar.com"]
-// "/badurl.html" => []
-func urlToPubcodes(siteURL string) []string {
-	parsed, err := neturl.Parse(siteURL)
-	if err != nil {
-		return []string{}
-	}
-	host := strings.ToLower(parsed.Hostname())
-	if strings.HasPrefix(host, "www.") {
-		return []string{host, strings.TrimPrefix(host, "www.")}
-	} else {
-		return []string{host, "www." + host}
-	}
-}
-
-// addMissingSites adds empty result entries into the raw data for any sites
-// which are not already represented.
-// Mutates the 'raw' param.
-func addMissingSites(raw slurp.RawSummary, siteURLs []string) {
-	for _, siteURL := range siteURLs {
-		alreadyGot := false
-		pubCodes := urlToPubcodes(siteURL)
-		if len(pubCodes) < 1 {
-			fmt.Fprintf(os.Stderr, "WARN: couldn't get a pubcode from '%s' - ignoring.", siteURL)
-			continue
-		}
-		for _, code := range pubCodes {
-			if _, got := raw[code]; got {
-				alreadyGot = true
-			}
-		}
-
-		if !alreadyGot {
-			// Add an empty placeholder entry for the "preferred" (first)
-			// pubcode.
-			raw[pubCodes[0]] = map[string]int{}
-		}
-	}
 }
